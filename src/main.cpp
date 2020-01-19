@@ -28,10 +28,6 @@
 #define COLOR_GREEN   2
 #define COLOR_ORANGE  3
 
-
-#define COLOR_A  COLOR_RED
-#define COLOR_B  COLOR_GREEN
-
 #define BTN_PIN     23
 
 #define BTN_PRESSED  0
