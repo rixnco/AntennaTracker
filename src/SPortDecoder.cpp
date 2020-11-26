@@ -115,7 +115,7 @@ bool SPortDecoder::process(uint8_t data)
         if (packetType == DATA_START)
         {
             uint16_t dataType = (_buffer[_index++]) | (_buffer[_index++] << 8);
-            uint32_t rawData  = (_buffer[_index++]) | (_buffer[_index++] << 8) | (_buffer[_index++] << 16) | (_buffer[_index++] << 24);
+            uint32_t rawData  = ((uint32_t)_buffer[_index++]) | (((uint32_t)_buffer[_index++]) << 8) | (((uint32_t)_buffer[_index++]) << 16) | (((uint32_t)_buffer[_index++]) << 24);
 
             switch (dataType)
             {
@@ -145,12 +145,12 @@ bool SPortDecoder::process(uint8_t data)
                 break;
             case GPS_SENSOR:
             {
-                double gpsData = (rawData && 0x3FFFFFFF) / 10000.0 / 60.0;
-                if (rawData && 0x40000000 > 0)
+                double gpsData = (rawData & 0x3FFFFFFF) / 10000.0 / 60.0;
+                if ((rawData & 0x40000000) > 0)
                 {
                     gpsData = -gpsData;
                 }
-                if (rawData && 0x80000000 == 0)
+                if ((rawData & 0x80000000) == 0)
                 {
                     _newLatitude = true;
                     _latitude = gpsData;
@@ -195,7 +195,7 @@ bool SPortDecoder::process(uint8_t data)
             case AIRSPEED_SENSOR:
             {
                 float *pdata = (float *)&rawData;
-                onAirSpeedData(*pdata * 1.852f);
+                onAirSpeedData((*pdata) * 1.852f);
                 break;
             }
             default:
