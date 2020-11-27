@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "BLEFrskyDataSource.h"
 #include "SPortDecoder.h"
+#include "CRSFDecoder.h"
 
 //--------------------------------------
 //              DEFINES
@@ -86,6 +87,7 @@ BLEAdvertisedDevice target;
 
 BLEFrskyDataSource  dataSource;
 SPortDecoder        sportDecoder;
+CRSFDecoder         crsfDecoder;
 Telemetry           telemetry;
 
 
@@ -125,7 +127,8 @@ void setup() {
   scanning=false;
 
     telemetry.setDataSource(&dataSource);
-    telemetry.setDecoder(&sportDecoder);
+//    telemetry.setDecoder(&sportDecoder);
+    telemetry.setDecoder(&crsfDecoder);
 
   BLEDevice::init("");
 
