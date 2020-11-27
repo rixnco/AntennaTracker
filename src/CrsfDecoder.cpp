@@ -27,6 +27,9 @@ void CRSFDecoder::reset() {
 
 bool CRSFDecoder::process(uint8_t data)
 {
+    Serial.print(" ");
+    Serial.print(data, HEX);
+
     switch(_state) {
     case IDLE:
         if(data == RADIO_ADDRESS) {
