@@ -27,8 +27,8 @@ void CRSFDecoder::reset() {
 
 bool CRSFDecoder::process(uint8_t data)
 {
-    Serial.print(" ");
-    Serial.print(data, HEX);
+    // Serial.print(" ");
+    // Serial.print(data, HEX);
 
     switch(_state) {
     case IDLE:
@@ -55,10 +55,10 @@ bool CRSFDecoder::process(uint8_t data)
         break;
     case CRC:
         _state = IDLE;
-        if(_crc == data) {
+//        if(_crc == data) {
             decodeFrame();
             return true;
-        }
+        // }
         break;
     }
     return false;
