@@ -2,17 +2,18 @@
 #define __SPORT_DECODER_H__
 
 #include <Arduino.h>
-#include "Decoder.h"
+#include "TelemetryDecoder.h"
+#include "DataSource.h"
 
 #define SPORT_FRAME_SIZE    9
 
-class SPortDecoder : public Decoder {
+class SPortDecoder : public TelemetryDecoder, DataListener  {
 public:
     SPortDecoder();
     virtual ~SPortDecoder();
     virtual void reset(); 
     virtual bool process(uint8_t data);
-
+    virtual void onDataReceived(uint8_t data);
 protected:
     enum State { IDLE, DATA, XOR };
 

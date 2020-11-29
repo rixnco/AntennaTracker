@@ -3,9 +3,9 @@
 
 #include <Arduino.h>
 
-class DecoderListener {
+class TelemetryListener {
 public:
-    virtual ~DecoderListener();
+    virtual ~TelemetryListener();
 
     virtual void onFuelData(int fuel);
     virtual void onGPSData(double latitude, double longitude);
@@ -26,16 +26,16 @@ public:
 };
 
 
-class Decoder {
+class TelemetryDecoder {
 public:
-    Decoder();
-    virtual ~Decoder();
+    TelemetryDecoder();
+    virtual ~TelemetryDecoder();
 
     virtual void reset() = 0;
 
     virtual bool process(uint8_t data) = 0;
 
-    void setDecoderListener(DecoderListener* listener);
+    void setTelemetryListener(TelemetryListener* listener);
 protected:
     void onFuelData(int fuel);
     void onGPSData(double latitude, double longitude);
@@ -54,7 +54,7 @@ protected:
     void onGSpeedData(float speed);
     void onAirSpeedData(float speed);
 private:
-    DecoderListener* _listener;
+    TelemetryListener* _listener;
 };
 
 

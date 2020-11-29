@@ -72,6 +72,8 @@ void SPortDecoder::reset() {
     _newLongitude = false;
 }
 
+void SPortDecoder::onDataReceived(uint8_t data) { process(data); }
+
 bool SPortDecoder::process(uint8_t data)
 {
     switch (_state)

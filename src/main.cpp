@@ -1,7 +1,13 @@
 #include <Arduino.h>
+
+#ifndef UNIT_TEST
+
+
 #include "BLEFrskyDataSource.h"
 #include "SPortDecoder.h"
 #include "CRSFDecoder.h"
+
+
 
 //--------------------------------------
 //              DEFINES
@@ -194,3 +200,4 @@ void loop() {
   delay(10); // Delay between loops.
 } // End of loop
 
+#endif

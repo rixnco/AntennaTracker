@@ -53,10 +53,10 @@ void CRSFDecoder::reset() {
     _crc  = 0;
 }
 
+void CRSFDecoder::onDataReceived(uint8_t data) { process(data); }
+
 bool CRSFDecoder::process(uint8_t data)
 {
-    // Serial.print(" ");
-    // Serial.print(data, HEX);
 
     switch(_state) {
     case IDLE:
@@ -68,7 +68,7 @@ bool CRSFDecoder::process(uint8_t data)
         if(data < 2 || data> MAX_PAYLOAD) {
             _state = IDLE;
         } else {
-            _length = data;
+            _length = data-1;  // remove CRC from the length
             _index = 0;
             _crc  = 0;
             _state = DATA;
@@ -83,37 +83,32 @@ bool CRSFDecoder::process(uint8_t data)
         break;
     case CRC:
         _state = IDLE;
-//        if(_crc == data) {
+        if(_crc == data) {
             decodeFrame();
             return true;
-        // }
+        }
         break;
     }
     return false;
 }
 
 bool CRSFDecoder::decodeFrame() {
-//    Serial.print("received: EA ");
-//    Serial.print(_length, HEX);
     uint8_t id = _buffer[0];
     int32_t value;
     switch(id) {
         case CF_VARIO_ID:
-//            Serial.println("Vario");
             if (getCrossfireTelemetryValue( value, &_buffer[1], 2))
-//                processCrossfireTelemetryValue(VERTICAL_SPEED_INDEX, value);
-                this->onVSpeedData(value / 100.f);
+                onVSpeedData(value / 100.f);
             break;
+        case GPS_ID: {
+            onGPSData(0,0);
+            onGPSAltitudeData(0);
+            onGPSStateData(0,true);
+            break;
+        }
+
     }
 
-
-
-    //    for(int t=0; t< _length; ++t) {
-//        Serial.print(" ");
-//        Serial.print(_buffer[t], HEX);
-//    }
-//    Serial.print(" ");
-//    Serial.println(_crc, HEX);
 
     return true;
 }
