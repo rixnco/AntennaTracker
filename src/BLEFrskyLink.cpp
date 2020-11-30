@@ -1,6 +1,5 @@
-#include "Arduino.h"
-
-#include "BLEFrskyDataSource.h"
+#include <Arduino.h>
+#include "BLEFrskyLink.h"
 
 // The remote service we wish to connect to. (Frsky)
 const BLEUUID FRSKY_SERVICE_UUID((uint16_t)0xFFF0);
@@ -9,27 +8,28 @@ const BLEUUID FRSKY_CHARACTERISTIC_UUID((uint16_t)0xFFF6);
 
 void blefrskydatasource_notifyCallback(BLERemoteCharacteristic *, uint8_t *, size_t, bool, void *);
 
-BLEFrskyDataSource::BLEFrskyDataSource() : _client(nullptr),
+BLEFrskyLink::BLEFrskyLink() : _client(nullptr),
                                    _frskyService(nullptr),
-                                   _frskyCharacteristic(nullptr)
+                                   _frskyCharacteristic(nullptr),
+                                   _listener(nullptr)
 {
 };
 
-BLEFrskyDataSource::~BLEFrskyDataSource()
+BLEFrskyLink::~BLEFrskyLink()
 {
 };
 
-bool BLEFrskyDataSource::connect(BLEAdvertisedDevice *device)
+bool BLEFrskyLink::connect(BLEAdvertisedDevice *device)
 {
     if (_client != nullptr)
     {
-        Serial.println("already connected ...");
+        // Serial.println("already connected ...");
         return false;
     }
 
-    Serial.print("BLEFrskyProvider(");
-    Serial.print(device->getAddress().toString().c_str());
-    Serial.println(")");
+    // Serial.print("BLEFrskyProvider(");
+    // Serial.print(device->getAddress().toString().c_str());
+    // Serial.println(")");
 
     _client = new BLEClient(); //BLEDevice::createClient();
     _client->setClientCallbacks(this);
@@ -37,26 +37,26 @@ bool BLEFrskyDataSource::connect(BLEAdvertisedDevice *device)
     if (!_client->connect(device))
     {
         close();
-        Serial.println("Connection... Failed");
+        // Serial.println("Connection... Failed");
         return false;
     }
-    Serial.println("Connection...OK");
+    // Serial.println("Connection...OK");
 
     // Obtain a reference to the service we are after in the remote BLE server.
 
-    Serial.print("Looking up Frsky service");
+    // Serial.print("Looking up Frsky service");
     _frskyService = _client->getService(FRSKY_SERVICE_UUID);
     if (_frskyService == nullptr)
     {
-        Serial.println("...Failed");
+        // Serial.println("...Failed");
         close();
         return false;
     }
-    Serial.println("...OK");
+    // Serial.println("...OK");
 
     // Obtain a reference to the characteristics in the service of the remote BLE server.
     _frskyCharacteristic = nullptr;
-    Serial.print("Looking up frsky characteristic");
+    // Serial.print("Looking up frsky characteristic");
     for (auto &pair : *_frskyService->getCharacteristicsByHandle())
     {
         BLERemoteCharacteristic *pChar = pair.second;
@@ -70,30 +70,33 @@ bool BLEFrskyDataSource::connect(BLEAdvertisedDevice *device)
 
     if (_frskyCharacteristic != nullptr)
     {
-        Serial.println("...OK");
-        Serial.print("Registering for notifications");
+        // Serial.println("...OK");
+        // Serial.print("Registering for notifications");
         if (!_frskyCharacteristic->canNotify())
         {
-            Serial.println("...Failed");
+            // Serial.println("...Failed");
             close();
             return false;
         }
         else
         {
             _frskyCharacteristic->registerForNotify(blefrskydatasource_notifyCallback, true, this);
-            Serial.println("...OK");
+            // Serial.println("...OK");
         }
     }
     else
     {
-        Serial.println("...Failed");
+        // Serial.println("...Failed");
         close();
         return false;
     }
+
+   fireConnectEvent();
+
     return true;
 };
 
-void BLEFrskyDataSource::close()
+void BLEFrskyLink::close()
 {
     if (_client == nullptr)
         return;
@@ -110,31 +113,23 @@ void BLEFrskyDataSource::close()
     _client = nullptr;
     delete tmp;
 
-    Serial.println("closed");
+    fireDisconnectEvent();
 };
 
-void BLEFrskyDataSource::onConnect(BLEClient *pclient)
+void BLEFrskyLink::onConnect(BLEClient *pclient)
 {
-    Serial.println("- onConnect");
 }
 
-void BLEFrskyDataSource::onDisconnect(BLEClient *pclient)
+void BLEFrskyLink::onDisconnect(BLEClient *pclient)
 {
     if (_client == nullptr)
         return;
-    Serial.println("- onDisconnect");
     close();
 }
 
-void BLEFrskyDataSource::received(const uint8_t *pData, size_t len)
+void BLEFrskyLink::received(const uint8_t *pData, size_t len)
 {
-    doNotify(pData, len);
-    // for (int t = 0; t < len; ++t)
-    // {
-    //     Serial.print(*pData++, HEX);
-    //     Serial.print(' ');
-    // }
-    // Serial.println();
+    fireDataReceivedEvent(pData, len);
 };
 
 void blefrskydatasource_notifyCallback(
@@ -147,6 +142,6 @@ void blefrskydatasource_notifyCallback(
 
     if (param != nullptr)
     {
-        ((BLEFrskyDataSource *)param)->received(pData, length);
+        ((BLEFrskyLink *)param)->received(pData, length);
     }
 }

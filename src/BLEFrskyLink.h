@@ -1,8 +1,11 @@
 #ifndef __BLE_FRSKY_DATA_SOURCE_H__
 #define __BLE_FRSKY_DATA_SOURCE_H__
 
+#include "DataLink.h"
 #include <BLEDevice.h>
-#include "DataSource.h"
+
+
+
 
 
 // The remote service we wish to connect to. (Frsky)
@@ -11,13 +14,13 @@ extern const BLEUUID FRSKY_SERVICE_UUID;
 extern const BLEUUID FRSKY_CHARACTERISTIC_UUID;
 
 
-class BLEFrskyDataSource : public BLEClientCallbacks, public DataSource
-{
+class BLEFrskyLink : public BLEClientCallbacks, public DataLink {
 public:
-    BLEFrskyDataSource();
-    ~BLEFrskyDataSource();
+    BLEFrskyLink();
+    ~BLEFrskyLink();
 
     bool connect(BLEAdvertisedDevice *device);
+    
     virtual void close();
 
     inline bool isConnected()
@@ -37,6 +40,7 @@ private:
     BLEClient *_client;
     BLERemoteService *_frskyService;
     BLERemoteCharacteristic *_frskyCharacteristic; 
+    LinkListener *_listener;
 };
 
 #endif // __BLE_FRSKY_DATA_SOURCE_H__

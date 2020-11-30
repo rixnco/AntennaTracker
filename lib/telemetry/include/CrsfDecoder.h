@@ -1,23 +1,20 @@
 #ifndef __CRSF_DECODER_H__
 #define __CRSF_DECODER_H__
 
-#include <Arduino.h>
+#include <stdint.h>
 #include "TelemetryDecoder.h"
-#include "DataSource.h"
+
 
 #define CRSF_MAX_FRAME_SIZE    64
 
-class CRSFDecoder : public TelemetryDecoder, DataListener {
+class CRSFDecoder : public TelemetryDecoder {
 public:
     CRSFDecoder();
     virtual ~CRSFDecoder();
     virtual void reset(); 
-    virtual bool process(uint8_t data);
-
-    virtual void onDataReceived(uint8_t data);
+    virtual void process(uint8_t data);
 protected:
     bool decodeFrame();
-
 
     enum State { IDLE, LENGTH, DATA, CRC };
 
@@ -28,7 +25,6 @@ protected:
     uint8_t  _length;
     uint8_t  _crc;
 };
-
 
 
 

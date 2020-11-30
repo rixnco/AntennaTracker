@@ -1,11 +1,8 @@
 #include <Arduino.h>
 
-#ifndef UNIT_TEST
-
-
-#include "BLEFrskyDataSource.h"
-#include "SPortDecoder.h"
-#include "CRSFDecoder.h"
+#include "BLEFrskyLink.h"
+#include <SPortDecoder.h>
+#include <CRSFDecoder.h>
 
 
 
@@ -19,58 +16,94 @@
 //              Types
 //--------------------------------------
 
-class Telemetry : public DecoderListener, DataListener {
+class TelemetryHandler : public TelemetryListener, public LinkListener {
 public:
-    void setDataSource(DataSource* dataSource) {
-        if(_dataSource != nullptr) {
-            _dataSource->setDataListener(nullptr);
+    TelemetryHandler() {
+        reset();
+    }
+
+    void setLink(DataLink* dataLink) {
+        if(_link != nullptr) {
+            _link->setLinkListener(nullptr);
         }
-        _dataSource = dataSource;
-        if(_dataSource!= nullptr) {
-            _dataSource->setDataListener(this);
+        reset();
+        _link = dataLink;
+        if(_link!= nullptr) {
+            _link->setLinkListener(this);
+            if(_link->isConnected()) onLinkConnected(_link);
         }
     }
 
-    void setDecoder(Decoder* decoder) {
-        if(_decoder!= nullptr) {
-            _decoder->setDecoderListener(nullptr);
-        }
-        _decoder = decoder;
+    bool isProtocolDetected() {
+        return _decoder!= nullptr;
+    }
+
+    virtual void onLinkConnected(DataLink* link) {
+        reset();
+        Serial.println("Link connected...\nDetecting protocol...");
+    }
+    virtual void onLinkDisconnected(DataLink* link) {
+        Serial.println("Link disconnected...");
+    }
+
+    virtual void onDataReceived(DataLink* link, uint8_t data) {
         if(_decoder != nullptr) {
-            _decoder->setDecoderListener(this);
+            _decoder->process(data);
+        } else {
+            for(auto it : _counter) {
+                it.first->process(data);
+                if(it.second>=10) {
+                    _decoder = it.first;
+                    Serial.print("Protocol detected: ");
+                    Serial.println(_decoder->getName().c_str());
+                    break;
+                }
+            }
         }
     }
 
-     virtual void onDataReceived(uint8_t data) {
-        //  Serial.print(data, HEX);
-        //  Serial.print(' ');
-         if(_decoder != nullptr) {
-             _decoder->process(data);
-         }
-     }
-
-
-   virtual void onFuelData(int fuel)                            { Serial.printf("Fuel       : %d\n", fuel); }
-    virtual void onGPSData(double latitude, double longitude)   { Serial.printf("GPS        : %lf, %lf\n", latitude, longitude); }
-    virtual void onVBATData(float voltage)                      { Serial.printf("VBat       : %.2fV\n", voltage); }
-    virtual void onCellVoltageData(float voltage)               { Serial.printf("Cell       : %.2fV\n", voltage); }
-    virtual void onCurrentData(float current)                   { Serial.printf("Current    : %.2fA\n", current); }
-    virtual void onHeadingData(float heading)                   { Serial.printf("Heading    : %.2f°\n", heading); }
-    virtual void onRSSIData(int rssi)                           { Serial.printf("Rssi       : %ddB\n", rssi); }
-    virtual void onGPSStateData(int satellites, bool gpsFix)    { Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix); }
-    virtual void onVSpeedData(float vspeed)                     { Serial.printf("VSpeed     : %.2fm/s\n", vspeed); }
-    virtual void onAltitudeData(float altitude)                 { Serial.printf("Altitude   : %.2fm\n", altitude); }
-    virtual void onGPSAltitudeData(float altitude)              { Serial.printf("GAlt       : %.2fm\n", altitude); }
-    virtual void onDistanceData(int distance)                   { Serial.printf("Distance   : %.2dm\n", distance); }
-    virtual void onRollData(float rollAngle)                    { Serial.printf("Roll       : %.2f°\n", rollAngle); }
-    virtual void onPitchData(float pitchAngle)                  { Serial.printf("Pitch      : %.2f°\n", pitchAngle); }
-    virtual void onGSpeedData(float speed)                      { Serial.printf("GSpeed     : %.2fm/s\n", speed); }
-    virtual void onAirSpeedData(float speed)                    { Serial.printf("AirSpeed   : %.2fm/s\n", speed); }
+    virtual void onFrameDecoded(TelemetryDecoder* decoder, uint32_t id)                         { if(_decoder==nullptr) _counter[decoder]+=1; }
+    virtual void onFrameError(TelemetryDecoder* decoder, TelemetryError error, uint32_t param)  { if(_decoder!=decoder) return; Serial.printf("Frame error: %d - 0x%X\n", error, param); }
+    virtual void onFuelData(TelemetryDecoder* decoder, int fuel)                                { if(_decoder!=decoder) return; Serial.printf("Fuel       : %d\n", fuel); }
+    virtual void onGPSData(TelemetryDecoder* decoder, double latitude, double longitude)        { if(_decoder!=decoder) return; Serial.printf("GPS        : %lf, %lf\n", latitude, longitude); }
+    virtual void onVBATData(TelemetryDecoder* decoder, float voltage)                           { if(_decoder!=decoder) return; Serial.printf("VBat       : %.2fV\n", voltage); }
+    virtual void onCellVoltageData(TelemetryDecoder* decoder, float voltage)                    { if(_decoder!=decoder) return; Serial.printf("Cell       : %.2fV\n", voltage); }
+    virtual void onCurrentData(TelemetryDecoder* decoder, float current)                        { if(_decoder!=decoder) return; Serial.printf("Current    : %.2fA\n", current); }
+    virtual void onHeadingData(TelemetryDecoder* decoder, float heading)                        { if(_decoder!=decoder) return; Serial.printf("Heading    : %.2f°\n", heading); }
+    virtual void onRSSIData(TelemetryDecoder* decoder, int rssi)                                { if(_decoder!=decoder) return; Serial.printf("Rssi       : %ddB\n", rssi); }
+    virtual void onRxBtData(TelemetryDecoder* decoder, float voltage)                           { if(_decoder!=decoder) return; Serial.printf("RxBt       : %.2fV\n", voltage); }
+    virtual void onGPSStateData(TelemetryDecoder* decoder, int satellites, bool gpsFix)         { if(_decoder!=decoder) return; Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix); }
+    virtual void onVSpeedData(TelemetryDecoder* decoder, float vspeed)                          { if(_decoder!=decoder) return; Serial.printf("VSpeed     : %.2fm/s\n", vspeed); }
+    virtual void onAltitudeData(TelemetryDecoder* decoder, float altitude)                      { if(_decoder!=decoder) return; Serial.printf("Altitude   : %.2fm\n", altitude); }
+    virtual void onGPSAltitudeData(TelemetryDecoder* decoder, float altitude)                   { if(_decoder!=decoder) return; Serial.printf("GAlt       : %.2fm\n", altitude); }
+    virtual void onDistanceData(TelemetryDecoder* decoder, int distance)                        { if(_decoder!=decoder) return; Serial.printf("Distance   : %.2dm\n", distance); }
+    virtual void onRollData(TelemetryDecoder* decoder, float rollAngle)                         { if(_decoder!=decoder) return; Serial.printf("Roll       : %.2f°\n", rollAngle); }
+    virtual void onPitchData(TelemetryDecoder* decoder, float pitchAngle)                       { if(_decoder!=decoder) return; Serial.printf("Pitch      : %.2f°\n", pitchAngle); }
+    virtual void onGSpeedData(TelemetryDecoder* decoder, float speed)                           { if(_decoder!=decoder) return; Serial.printf("GSpeed     : %.2fm/s\n", speed); }
+    virtual void onAirSpeedData(TelemetryDecoder* decoder, float speed)                         { if(_decoder!=decoder) return; Serial.printf("AirSpeed   : %.2fm/s\n", speed); }
 
 private:
-    DataSource* _dataSource;
-    Decoder*    _decoder;
+    void reset() {
+        _decoder = nullptr;
+        _counter[&_sportDecoder]= 0;
+        _counter[&_crsfDecoder] = 0;
+
+        _crsfDecoder.reset();
+        _crsfDecoder.setTelemetryListener(this);
+        _sportDecoder.reset();
+        _sportDecoder.setTelemetryListener(this);
+    }
+
+
+
+    DataLink                        *_link;
+    TelemetryDecoder                *_decoder;
+
+    CRSFDecoder                     _crsfDecoder;
+    SPortDecoder                    _sportDecoder;
+    std::map<TelemetryDecoder*,int> _counter;
 };
+
 
 
 //--------------------------------------
@@ -91,10 +124,10 @@ bool scanning;
 bool doConnect;
 BLEAdvertisedDevice target;
 
-BLEFrskyDataSource  dataSource;
-SPortDecoder        sportDecoder;
-CRSFDecoder         crsfDecoder;
-Telemetry           telemetry;
+BLEFrskyLink                dataLink;
+TelemetryHandler            telemetryHandler;
+
+
 
 
 
@@ -132,9 +165,9 @@ void setup() {
   doConnect=false;
   scanning=false;
 
-    telemetry.setDataSource(&dataSource);
-//    telemetry.setDecoder(&sportDecoder);
-    telemetry.setDecoder(&crsfDecoder);
+    telemetryHandler.setLink(&dataLink);
+//    telemetryHandler.setDecoder(&sportDecoder);
+    // telemetryHandler.setDecoder(&crsfDecoder);
 
   BLEDevice::init("");
 
@@ -177,19 +210,15 @@ void loop() {
     doConnect=false;
     scanning=false;
     BLEDevice::getScan()->stop();    
-    if(!dataSource.isConnected()) {
+    if(!dataLink.isConnected()) {
       Serial.println("Connecting to BLEFrskyClient ");
-      if(dataSource.connect(&target)) {
-        Serial.println("Connected");
-        sportDecoder.reset();
-
-      } else {
+      if(!dataLink.connect(&target)) {
         Serial.println("Connection Failed");
       }
     }
   }
 
-  if (!dataSource.isConnected() ) {
+  if (!dataLink.isConnected() ) {
     if(!scanning) {
       scanning= true;
       Serial.println("Start scanning...");
@@ -200,4 +229,3 @@ void loop() {
   delay(10); // Delay between loops.
 } // End of loop
 
-#endif

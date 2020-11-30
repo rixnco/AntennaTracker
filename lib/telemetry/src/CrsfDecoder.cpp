@@ -3,7 +3,6 @@
 #include "CrsfDecoder.h"
 #include "crc.h"
 
-
 #define RADIO_ADDRESS       0xEA
 #define MAX_PAYLOAD         (CRSF_MAX_FRAME_SIZE-2)
 #define MIN_PAYLOAD         (6)
@@ -22,7 +21,7 @@
 #define COMMAND_ID                     0x32
 #define RADIO_ID                       0x3A
 
-bool getCrossfireTelemetryValue(int32_t & value, uint8_t * pbuffer, uint8_t N)
+static bool getCrossfireTelemetryValue(int32_t & value, uint8_t * pbuffer, uint8_t N)
 {
     bool result = false;
     uint8_t * byte = pbuffer;
@@ -37,7 +36,7 @@ bool getCrossfireTelemetryValue(int32_t & value, uint8_t * pbuffer, uint8_t N)
     return result;
 }
 
-CRSFDecoder::CRSFDecoder() 
+CRSFDecoder::CRSFDecoder() : TelemetryDecoder("crossfire")
 {
     reset();
 }
@@ -53,9 +52,7 @@ void CRSFDecoder::reset() {
     _crc  = 0;
 }
 
-void CRSFDecoder::onDataReceived(uint8_t data) { process(data); }
-
-bool CRSFDecoder::process(uint8_t data)
+void CRSFDecoder::process(uint8_t data)
 {
 
     switch(_state) {
@@ -67,6 +64,7 @@ bool CRSFDecoder::process(uint8_t data)
     case LENGTH:
         if(data < 2 || data> MAX_PAYLOAD) {
             _state = IDLE;
+            fireFrameError(ERROR_BAD_FORMAT);
         } else {
             _length = data-1;  // remove CRC from the length
             _index = 0;
@@ -85,11 +83,11 @@ bool CRSFDecoder::process(uint8_t data)
         _state = IDLE;
         if(_crc == data) {
             decodeFrame();
-            return true;
+        } else {
+            fireFrameError(ERROR_CRC);
         }
         break;
     }
-    return false;
 }
 
 bool CRSFDecoder::decodeFrame() {
@@ -98,14 +96,20 @@ bool CRSFDecoder::decodeFrame() {
     switch(id) {
         case CF_VARIO_ID:
             if (getCrossfireTelemetryValue( value, &_buffer[1], 2))
-                onVSpeedData(value / 100.f);
+                fireFrameDecoded(id);
+                fireVSpeedData(value / 100.f);
             break;
         case GPS_ID: {
-            onGPSData(0,0);
-            onGPSAltitudeData(0);
-            onGPSStateData(0,true);
+            fireFrameDecoded(id);
+            fireGPSData(0,0);
+            fireGPSAltitudeData(0);
+            fireGPSStateData(0,true);
             break;
         }
+        default:
+//            fireFrameDecoded(id);
+            fireFrameError(ERROR_UNKNOWN_ID, id);
+            break;
 
     }
 

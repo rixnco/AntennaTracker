@@ -1,6 +1,10 @@
-#include <unity.h>
+#include <Arduino.h>
 
-#include "CrsfDecoder.h"
+#include <unity.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <CrsfDecoder.h>
 
 
 const uint8_t stream[] = {
@@ -258,47 +262,50 @@ const uint8_t stream[] = {
 };
 
 
-class TelemetryListener : public DecoderListener {
+class MyTelemetryListener : public TelemetryListener {
 public: 
-    virtual void onFuelData(int fuel)                           { Serial.printf("Fuel       : %d\n", fuel); }
-    virtual void onGPSData(double latitude, double longitude)   { Serial.printf("GPS        : %lf, %lf\n", latitude, longitude); }
-    virtual void onVBATData(float voltage)                      { Serial.printf("VBat       : %.2fV\n", voltage); }
-    virtual void onCellVoltageData(float voltage)               { Serial.printf("Cell       : %.2fV\n", voltage); }
-    virtual void onCurrentData(float current)                   { Serial.printf("Current    : %.2fA\n", current); }
-    virtual void onHeadingData(float heading)                   { Serial.printf("Heading    : %.2f°\n", heading); }
-    virtual void onRSSIData(int rssi)                           { Serial.printf("Rssi       : %ddB\n", rssi); }
-    virtual void onGPSStateData(int satellites, bool gpsFix)    { Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix); }
-    virtual void onVSpeedData(float vspeed)                     { Serial.printf("VSpeed     : %.2fm/s\n", vspeed); }
-    virtual void onAltitudeData(float altitude)                 { Serial.printf("Altitude   : %.2fm\n", altitude); }
-    virtual void onGPSAltitudeData(float altitude)              { Serial.printf("GAlt       : %.2fm\n", altitude); }
-    virtual void onDistanceData(int distance)                   { Serial.printf("Distance   : %.2dm\n", distance); }
-    virtual void onRollData(float rollAngle)                    { Serial.printf("Roll       : %.2f°\n", rollAngle); }
-    virtual void onPitchData(float pitchAngle)                  { Serial.printf("Pitch      : %.2f°\n", pitchAngle); }
-    virtual void onGSpeedData(float speed)                      { Serial.printf("GSpeed     : %.2fm/s\n", speed); }
-    virtual void onAirSpeedData(float speed)                    { Serial.printf("AirSpeed   : %.2fm/s\n", speed); }
+    virtual void onFuelData(int fuel)                           { printf("Fuel       : %d\n", fuel); }
+    virtual void onGPSData(double latitude, double longitude)   { printf("GPS        : %lf, %lf\n", latitude, longitude); }
+    virtual void onVBATData(float voltage)                      { printf("VBat       : %.2fV\n", voltage); }
+    virtual void onCellVoltageData(float voltage)               { printf("Cell       : %.2fV\n", voltage); }
+    virtual void onCurrentData(float current)                   { printf("Current    : %.2fA\n", current); }
+    virtual void onHeadingData(float heading)                   { printf("Heading    : %.2f°\n", heading); }
+    virtual void onRSSIData(int rssi)                           { printf("Rssi       : %ddB\n", rssi); }
+    virtual void onGPSStateData(int satellites, bool gpsFix)    { printf("GPSState   : %d, %d\n", satellites, gpsFix); }
+    virtual void onVSpeedData(float vspeed)                     { printf("VSpeed     : %.2fm/s\n", vspeed); }
+    virtual void onAltitudeData(float altitude)                 { printf("Altitude   : %.2fm\n", altitude); }
+    virtual void onGPSAltitudeData(float altitude)              { printf("GAlt       : %.2fm\n", altitude); }
+    virtual void onDistanceData(int distance)                   { printf("Distance   : %.2dm\n", distance); }
+    virtual void onRollData(float rollAngle)                    { printf("Roll       : %.2f°\n", rollAngle); }
+    virtual void onPitchData(float pitchAngle)                  { printf("Pitch      : %.2f°\n", pitchAngle); }
+    virtual void onGSpeedData(float speed)                      { printf("GSpeed     : %.2fm/s\n", speed); }
+    virtual void onAirSpeedData(float speed)                    { printf("AirSpeed   : %.2fm/s\n", speed); }
 
 } ;
 
 
 CRSFDecoder    decoder;
-TelemetryListener telemetry;
+MyTelemetryListener telemetry;
 
 void test_CRSFDecoder(void) {
-    decoder.setDecoderListener(&telemetry);
-    for(uint t= 0; t<sizeof(stream); ++t) {
+    decoder.setTelemetryListener(&telemetry);
+    for(int t= 0; t<sizeof(stream); ++t) {
         decoder.process(stream[t]);
     }
 }
 
 
+
+
 void setup() {
     delay(2000);
     UNITY_BEGIN();
-
     RUN_TEST(test_CRSFDecoder);
-
     UNITY_END();
 }
 
+
 void loop() {
+    
 }
+
