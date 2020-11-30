@@ -5,7 +5,7 @@ int main(int argc, char **argv) {
     UNITY_BEGIN();
 
     RUN_TEST(test_SPortDecoder);
-//    RUN_TEST(test_CRSFDecoder);
+    RUN_TEST(test_CRSFDecoder);
 
     UNITY_END();
 }

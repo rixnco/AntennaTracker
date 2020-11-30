@@ -21,6 +21,13 @@
 #define COMMAND_ID                     0x32
 #define RADIO_ID                       0x3A
 
+
+#define DEG ( 180.0 / 3.14159265358979323846264 )
+
+#define DECIDEGREES_TO_RADIANS10000(angle) ((int16_t)(1000.0f * (angle) * RAD))
+#define RADIANS10000_TO_DECIDEGREES(rad1000) ( rad1000/1000.f * DEG )
+
+
 static bool getCrossfireTelemetryValue(int32_t & value, uint8_t * pbuffer, uint8_t N)
 {
     bool result = false;
@@ -92,18 +99,83 @@ void CRSFDecoder::process(uint8_t data)
 
 bool CRSFDecoder::decodeFrame() {
     uint8_t id = _buffer[0];
-    int32_t value;
     switch(id) {
         case CF_VARIO_ID:
-            if (getCrossfireTelemetryValue( value, &_buffer[1], 2))
-                fireFrameDecoded(id);
+            int32_t value;
+            fireFrameDecoded(id);
+            if (getCrossfireTelemetryValue( value, &_buffer[1], 2)) {
                 fireVSpeedData(value / 100.f);
+            }
             break;
         case GPS_ID: {
+            int32_t lat,lon;
             fireFrameDecoded(id);
-            fireGPSData(0,0);
-            fireGPSAltitudeData(0);
-            fireGPSStateData(0,true);
+            if (getCrossfireTelemetryValue(lat, &_buffer[1], 4) &&
+                getCrossfireTelemetryValue(lon, &_buffer[5], 4)) {
+                fireGPSData(lat/10.f, lon/10.f);
+            }
+            int32_t speed;
+            if (getCrossfireTelemetryValue(speed, &_buffer[9], 2)) {
+                fireGSpeedData(speed);
+            }
+            int32_t heading;
+            if (getCrossfireTelemetryValue(heading, &_buffer[11], 2)) {
+                fireHeadingData(heading);
+            }
+            int32_t alt;
+            if (getCrossfireTelemetryValue(alt, &_buffer[13], 2)) {
+                fireGPSAltitudeData(alt-1000);
+            }
+            int32_t satellites;
+            if (getCrossfireTelemetryValue(satellites, &_buffer[15], 1)) {
+                fireGPSStateData(satellites, true);
+            }
+            break;
+        }
+        case ATTITUDE_ID: {
+            fireFrameDecoded(id);
+            int32_t pitch,roll,yaw;
+            if (getCrossfireTelemetryValue(pitch, &_buffer[1], 2)) {
+                firePitchData(RADIANS10000_TO_DECIDEGREES(pitch)/10.f);
+            }
+            if (getCrossfireTelemetryValue(roll, &_buffer[3], 2)) {
+                fireRollData(RADIANS10000_TO_DECIDEGREES(roll)/10.f);
+            }
+            if (getCrossfireTelemetryValue(yaw, &_buffer[5], 2)) {
+                fireHeadingData(RADIANS10000_TO_DECIDEGREES(yaw)/10.f);
+            }
+            break;
+        }
+        case BATTERY_ID: {
+            fireFrameDecoded(id);
+            int32_t voltage, current, fuel, remaining;
+            if (getCrossfireTelemetryValue(voltage, &_buffer[1], 2)) {
+                fireVBATData(voltage/10.f);
+            }
+            if (getCrossfireTelemetryValue(current, &_buffer[3], 2)) {
+                fireCurrentData(current/10.f);
+            }
+            if (getCrossfireTelemetryValue(fuel, &_buffer[5], 3)) {
+                fireFuelData(fuel);
+            }
+            if (getCrossfireTelemetryValue(remaining, &_buffer[8], 1)) {
+                // todo: implement...
+            }
+            break;
+        }
+        case FLIGHT_MODE_ID: {
+            fireFrameDecoded(id);
+            // TODO: implement...
+            break;
+        }
+        case LINK_ID: {
+            fireFrameDecoded(id);
+            // TODO: implement...
+            break;
+        }
+        case RADIO_ID: {
+            fireFrameDecoded(id);
+            // TODO: implement...
             break;
         }
         default:
