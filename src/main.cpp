@@ -3,7 +3,7 @@
 #include "BLEFrskyLink.h"
 #include <SPortDecoder.h>
 #include <CRSFDecoder.h>
-
+#include "GpsUtils.h"
 
 
 //--------------------------------------

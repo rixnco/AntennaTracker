@@ -22,5 +22,7 @@ private:
 };
 
 float compute_azimuth(GpsPt& from, GpsPt& to);
+double compute_distance(GpsPt& from, GpsPt& to);
+double compute_tilt(GpsPt& from, GpsPt& to);
 
 #endif //ANTENNATRACKER_GPSUTILS_H
