@@ -2,8 +2,8 @@
 // Created by Samuel HEIDMANN on 01/12/2020.
 //
 
-#ifndef __GPSUTILS_H__
-#define __GPSUTILS_H__
+#ifndef __GEOUTILS_H__
+#define __GEOUTILS_H__
 
 class GeoPt {
 public:
@@ -23,6 +23,9 @@ public:
     float azimuthTo(const GeoPt& target) const;
     float azimuthTo(float toLat, float toLon) const;
 
+    float distanceTo(const GeoPt& to);
+    float tiltTo(const GeoPt& to);
+
 private:
     float _lat;
     float _lon;
@@ -31,4 +34,7 @@ private:
 
 float compute_azimuth(const GeoPt& from, const GeoPt& to);
 
-#endif // __GPSUTILS_H__
+float compute_distance(const GeoPt& from, const GeoPt& to);
+float compute_tilt(const GeoPt& from, const GeoPt& to);
+
+#endif // __GEOUTILS_H__

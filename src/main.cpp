@@ -1,9 +1,15 @@
 #include <Arduino.h>
 
-#include <StepperMotor.h>
+#include <map>
+#include <BLEDevice.h>
+
+#include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
 #include <CRSFDecoder.h>
+#include <StepperMotor.h>
+#include <GeoUtils.h>
 #include "BLEFrskyLink.h"
+#include "DataLink.h"
 
 
 //--------------------------------------
@@ -168,8 +174,6 @@ void setup() {
     
   Serial.begin(115200);
   Serial.println("Starting Antenna Tracker");
-
-    pinMode(1, OUTPUT);
 
   doConnect=false;
   scanning=false;

@@ -5,6 +5,7 @@
 
 #include <cmath>
 
+#define EARTH_RADIUS_KM 6371
 
 #define TO_RADF(x) (((float)(M_PI))*((float)(x))/180.f)
 #define TO_DEGF(x) (180.f*((float)(x))/((float)(M_PI)))
@@ -63,4 +64,23 @@ float GeoPt::azimuthTo(float toLat, float toLon) const {
 
 float compute_azimuth(const GeoPt& from, const GeoPt& to) {
      return from.azimuthTo(to);
+}
+
+
+float compute_distance(const GeoPt& from, const GeoPt& to) {
+    double dLat = (M_PI / 180.0)*(to.getLatitude()-from.getLatitude());
+    double dLon = (M_PI / 180.0)*(to.getLongitude()-from.getLongitude());
+    double lat1 = (M_PI / 180.0)*from.getLatitude();
+    double lat2 = (M_PI / 180.0)*to.getLatitude();
+
+    double a = sin(dLat/2) * sin(dLat/2) +
+            sin(dLon/2) * sin(dLon/2) * cos(lat1) * cos(lat2);
+    double c = 2 * atan2(sqrt(a), sqrt(1-a));
+    return 1000.* EARTH_RADIUS_KM * c;
+}
+
+float compute_tilt(const GeoPt& from, const GeoPt& to) {
+    double distance = compute_distance(from, to);
+    double lambda = asin((to.getElevation()-from.getElevation())/distance);
+    return lambda * (180. / M_PI);
 }
