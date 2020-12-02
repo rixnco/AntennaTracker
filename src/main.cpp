@@ -1,9 +1,9 @@
 #include <Arduino.h>
 
-#include "BLEFrskyLink.h"
+#include <StepperMotor.h>
 #include <SPortDecoder.h>
 #include <CRSFDecoder.h>
-
+#include "BLEFrskyLink.h"
 
 
 //--------------------------------------
@@ -154,7 +154,14 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 }; // MyAdvertisedDeviceCallbacks
 
 
+volatile uint32_t steps=0;
 
+void stepCallback(StepperMotor* stepper) {
+    ++steps;
+}
+void stopCallback(StepperMotor* stepper) {
+    Serial.println("move done");
+}
 
 
 void setup() {
@@ -162,33 +169,14 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting Antenna Tracker");
 
+    pinMode(1, OUTPUT);
+
   doConnect=false;
   scanning=false;
 
     telemetryHandler.setLink(&dataLink);
-//    telemetryHandler.setDecoder(&sportDecoder);
-    // telemetryHandler.setDecoder(&crsfDecoder);
 
   BLEDevice::init("");
-
-//   if(digitalRead(BTN_PIN)==0) {
-//     int dev_num = esp_ble_get_bond_device_num();
-//     Serial.print("Removing bond data: "); Serial.println(dev_num);
-//     esp_ble_bond_dev_t *dev_list = (esp_ble_bond_dev_t *)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);
-//     esp_ble_get_bond_device_list(&dev_num, dev_list);
-//     for (int i = 0; i < dev_num; i++) {
-//         esp_ble_remove_bond_device(dev_list[i].bd_addr);
-//     }
-//     free(dev_list);    
-//   }
-
-//   BLESecurity *pSecurity = new BLESecurity();
-//   pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-//   pSecurity->setCapability(ESP_IO_CAP_NONE);
-//   pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-
-//   BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
-
 
 
   // Retrieve a Scanner and set the callback we want to use to be informed when we
@@ -200,8 +188,61 @@ void setup() {
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
 
-  Serial.println("Started...");
-  
+    Serial.println("Start motor");
+
+    Stepper.init(27,26, 32*64*8);
+    Stepper.setStopCallback(stopCallback);
+    Stepper.setStepCallback(stepCallback);
+
+
+    float speed;
+    float angle;
+
+    steps = 0;
+    speed = 90;
+    angle = 180;
+    Serial.printf("Move %.2f° CW at %.2f°/s\n", fabs(angle), speed);
+    Stepper.move(speed, angle);
+
+    while(Stepper.isMoving()) delay(100);
+    Serial.printf("steps = %u\n", steps);
+
+    steps =0;
+    speed = 45;
+    angle = -180;
+    Serial.printf("Move %.2f° CCW at %.2f°/s\n", fabs(angle), speed);
+    Stepper.move(speed, angle);
+
+    while(Stepper.isMoving()) delay(100);
+    Serial.printf("steps = %u\n", steps);
+
+    steps =0;
+    speed = 30;
+    angle = DIR_CW;
+    Serial.printf("Move CW at %.2f°/s for 4 second\n", speed);
+    Stepper.move(speed, angle);
+    delay(4000);
+    Serial.println("Stopping");
+    Stepper.stop();
+    while(Stepper.isMoving()) delay(100);
+    Serial.printf("steps = %u\n", steps);
+
+    steps =0;
+    speed = 60;
+    angle = DIR_CCW;
+    Serial.printf("Move CW at %.2f°/s for 2 second\n", speed);
+    Stepper.move(speed, angle);
+    delay(2000);
+    Serial.println("Stopping");
+    Stepper.stop();
+    while(Stepper.isMoving()) delay(100);
+    Serial.printf("steps = %u\n", steps);
+
+    Serial.println("stopped");
+
+
+
+    Serial.println("Started...");
 } // End of setup.
 
 void loop() {

@@ -1,21 +1,23 @@
 #include <Arduino.h>
-#include "AccelStepper.h"
-#include "QMC5883LCompass.h"
-#include "GpsUtils.h"
+#include <AccelStepper.h>
+#include <QMC5883LCompass.h>
+#include <GeoUtils.h>
+
 #define MAX_SPEED   3000
 #define SPEED       1000
 #define STEPS_PER_REVOLUTION 8152
 #define CALIB_TARGET STEPS_PER_REVOLUTION + 1000
-#define HOME_LAT 45.477577
-#define HOME_LONG 6.057257
+#define HOME_LAT 45.477577f
+#define HOME_LONG 6.057257f
 
 AccelStepper motor = AccelStepper(AccelStepper::DRIVER, 32, 33);
 QMC5883LCompass compass;
 
 //GpsPt HomePt = GpsPt(39.099912, -94.581213, 0);
-GpsPt HomePt = GpsPt(HOME_LAT, HOME_LONG, 0);
+GeoPt homePt = GeoPt(HOME_LAT, HOME_LONG, 0);
 //GpsPt TargetPt = GpsPt(38.627089, -90.200203, 0);
-GpsPt TargetPt = GpsPt(45.472752, 6.097065, 0);
+GeoPt targetPt = GeoPt(45.472752f, 6.097065f, 0);
+
 int calibrationData[2][2];
 
 void calibrate(int loops) {
@@ -100,7 +102,7 @@ float getHeadingError(float current_heading, float target_heading) {
     }
 }
 
-void setup() {
+void _setup() {
 
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
@@ -109,14 +111,14 @@ void setup() {
     compass.setMode(0x01,0x00,0x00,0xC0);
     motor.stop();
     Serial.println("Started");
-    float target_heading = compute_azimuth(HomePt, TargetPt);
+    float target_heading = homePt.azimuthTo(targetPt);
     Serial.println("azimuth to target : ");
     Serial.println(target_heading);
     calibrate(1);
     compass.setCalibration(calibrationData[0][0], calibrationData[0][1], calibrationData[1][0], calibrationData[1][1], -2000, 2000);
 }
 
-void loop() {
+void _loop() {
     int a;
     compass.read();
 
@@ -126,7 +128,7 @@ void loop() {
     Serial.print("Azimuth: ");
     Serial.print(a);
 
-    float target_heading = compute_azimuth(HomePt, TargetPt);
+    float target_heading = homePt.azimuthTo(targetPt);
     float error = getHeadingError(a, target_heading);
     Serial.print("     error: ");
     Serial.print(error);
