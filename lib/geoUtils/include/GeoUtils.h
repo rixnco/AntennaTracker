@@ -21,10 +21,8 @@ public:
     void  setElevation(float elev);
 
     float azimuthTo(const GeoPt& target) const;
-    float azimuthTo(float toLat, float toLon) const;
-
-    float distanceTo(const GeoPt& to);
-    float tiltTo(const GeoPt& to);
+    float distanceTo(const GeoPt& to) const;
+    float tiltTo(const GeoPt& to) const;
 
 private:
     float _lat;

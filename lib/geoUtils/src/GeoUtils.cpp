@@ -50,16 +50,31 @@ void GeoPt::setElevation(float elev) {
 
 
 float GeoPt::azimuthTo(const GeoPt& target) const {
-    return azimuthTo(target._lat, target._lon);
-}
-float GeoPt::azimuthTo(float toLat, float toLon) const {
-    float X = cosf(TO_RADF(toLat)) * sinf(TO_RADF(toLon-_lon));
-    float Y = cosf(TO_RADF(_lat)) * sinf(TO_RADF(toLat)) -
-              (sinf(TO_RADF(_lat)) * cosf(TO_RADF(toLat)) * cosf(TO_RADF(toLon - _lon)));
+    float X = cosf(TO_RADF(target._lat)) * sinf(TO_RADF(target._lon-_lon));
+    float Y = cosf(TO_RADF(_lat)) * sinf(TO_RADF(target._lat)) -
+              (sinf(TO_RADF(_lat)) * cosf(TO_RADF(target._lat)) * cosf(TO_RADF(target._lon - _lon)));
     float azimuthRad = atan2f(X, Y);
     return TO_DEGF(azimuthRad);
 }
 
+
+float GeoPt::distanceTo(const GeoPt& target) const {
+    float dLat = TO_RADF(target._lat-_lat);
+    float dLon = TO_RADF(target._lon-_lon);
+    float lat1 = TO_RADF(_lat);
+    float lat2 = TO_RADF(target._lat);
+
+    float a = sinf(dLat/2) * sinf(dLat/2) +
+            sinf(dLon/2) * sinf(dLon/2) * cosf(lat1) * cosf(lat2);
+    float c = 2 * atan2f(sqrtf(a), sqrtf(1-a));
+    return 1000.f * EARTH_RADIUS_KM * c;
+}
+
+float GeoPt::tiltTo(const GeoPt& target) const {
+   float distance = distanceTo(target);
+    float lambda = asinf((target._elev-_elev)/distance);
+    return TO_DEGF(lambda);
+}
 
 
 float compute_azimuth(const GeoPt& from, const GeoPt& to) {
@@ -68,19 +83,9 @@ float compute_azimuth(const GeoPt& from, const GeoPt& to) {
 
 
 float compute_distance(const GeoPt& from, const GeoPt& to) {
-    double dLat = (M_PI / 180.0)*(to.getLatitude()-from.getLatitude());
-    double dLon = (M_PI / 180.0)*(to.getLongitude()-from.getLongitude());
-    double lat1 = (M_PI / 180.0)*from.getLatitude();
-    double lat2 = (M_PI / 180.0)*to.getLatitude();
-
-    double a = sin(dLat/2) * sin(dLat/2) +
-            sin(dLon/2) * sin(dLon/2) * cos(lat1) * cos(lat2);
-    double c = 2 * atan2(sqrt(a), sqrt(1-a));
-    return 1000.* EARTH_RADIUS_KM * c;
+    return from.distanceTo(to);
 }
 
 float compute_tilt(const GeoPt& from, const GeoPt& to) {
-    double distance = compute_distance(from, to);
-    double lambda = asin((to.getElevation()-from.getElevation())/distance);
-    return lambda * (180. / M_PI);
+    return from.tiltTo(to);
 }
