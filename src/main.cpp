@@ -2,11 +2,11 @@
 
 #include <map>
 #include <BLEDevice.h>
-
+#include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
 #include <CRSFDecoder.h>
-#include <StepperMotor.h>
+#include <ESP32Stepper.h>
 #include <GeoUtils.h>
 
 #include "BLEFrskyLink.h"
@@ -134,8 +134,10 @@ BLEAdvertisedDevice target;
 BLEFrskyLink                dataLink;
 TelemetryHandler            telemetryHandler;
 
+ESP32Stepper    stepper;
+Servo           tiltServo;
 
-
+ESP32Stepper other[6];
 
 
 
@@ -163,10 +165,10 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
 volatile uint32_t steps=0;
 
-void stepCallback(StepperMotor* stepper) {
+void stepCallback(ESP32Stepper* stepper) {
     ++steps;
 }
-void stopCallback(StepperMotor* stepper) {
+void stopCallback(ESP32Stepper* stepper) {
     Serial.println("move done");
 }
 
@@ -195,9 +197,15 @@ void setup() {
 
     Serial.println("Start motor");
 
-    Stepper.init(27,26, 32*64*8);
-    Stepper.setStopCallback(stopCallback);
-    Stepper.setStepCallback(stepCallback);
+    Serial.print("Attach stepper...");
+    if(!stepper.attach(27,26, 32*64*8)) {
+        Serial.println("...FAIL");
+        while(true);
+    }
+    Serial.println("...OK");
+
+    stepper.setStopCallback(stopCallback);
+    stepper.setStepCallback(stepCallback);
 
 
     float speed;
@@ -207,45 +215,56 @@ void setup() {
     speed = 90;
     angle = 180;
     Serial.printf("Move %.2f° CW at %.2f°/s\n", fabs(angle), speed);
-    Stepper.move(speed, angle);
+    stepper.move(speed, angle);
 
-    while(Stepper.isMoving()) delay(100);
+    while(stepper.isMoving()) delay(100);
     Serial.printf("steps = %u\n", steps);
 
     steps =0;
     speed = 45;
     angle = -180;
     Serial.printf("Move %.2f° CCW at %.2f°/s\n", fabs(angle), speed);
-    Stepper.move(speed, angle);
+    stepper.move(speed, angle);
 
-    while(Stepper.isMoving()) delay(100);
+    while(stepper.isMoving()) delay(100);
     Serial.printf("steps = %u\n", steps);
 
     steps =0;
     speed = 30;
     angle = DIR_CW;
     Serial.printf("Move CW at %.2f°/s for 4 second\n", speed);
-    Stepper.move(speed, angle);
+    stepper.move(speed, angle);
     delay(4000);
     Serial.println("Stopping");
-    Stepper.stop();
-    while(Stepper.isMoving()) delay(100);
+    stepper.stop();
+    while(stepper.isMoving()) delay(100);
     Serial.printf("steps = %u\n", steps);
 
     steps =0;
     speed = 60;
     angle = DIR_CCW;
     Serial.printf("Move CW at %.2f°/s for 2 second\n", speed);
-    Stepper.move(speed, angle);
+    stepper.move(speed, angle);
     delay(2000);
     Serial.println("Stopping");
-    Stepper.stop();
-    while(Stepper.isMoving()) delay(100);
+    stepper.stop();
+    while(stepper.isMoving()) delay(100);
     Serial.printf("steps = %u\n", steps);
 
     Serial.println("stopped");
 
 
+    tiltServo.attach(32);
+
+    tiltServo.write(90);
+
+    delay(2000);
+
+    tiltServo.write(45);
+
+    delay(2000);
+
+    tiltServo.write(10);
 
     Serial.println("Started...");
 } // End of setup.
