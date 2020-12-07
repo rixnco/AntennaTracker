@@ -27,6 +27,10 @@ GeoPt& GeoPt::operator=(const GeoPt& other) {
     return *this;
 }
 
+bool GeoPt::operator==(const GeoPt &other) const {
+    return (this->_elev == other._elev) && (this->_lat == other._lat);
+}
+
 float GeoPt::getLatitude() const {
     return _lat;
 }
@@ -50,6 +54,7 @@ void GeoPt::setElevation(float elev) {
 
 
 float GeoPt::azimuthTo(const GeoPt& target) const {
+    if (*this == target) {return -1.;}
     float X = cosf(TO_RADF(target._lat)) * sinf(TO_RADF(target._lon-_lon));
     float Y = cosf(TO_RADF(_lat)) * sinf(TO_RADF(target._lat)) -
               (sinf(TO_RADF(_lat)) * cosf(TO_RADF(target._lat)) * cosf(TO_RADF(target._lon - _lon)));
@@ -59,6 +64,7 @@ float GeoPt::azimuthTo(const GeoPt& target) const {
 
 
 float GeoPt::distanceTo(const GeoPt& target) const {
+    if (*this == target) {return 0.;}
     float dLat = TO_RADF(target._lat-_lat);
     float dLon = TO_RADF(target._lon-_lon);
     float lat1 = TO_RADF(_lat);
@@ -71,9 +77,14 @@ float GeoPt::distanceTo(const GeoPt& target) const {
 }
 
 float GeoPt::tiltTo(const GeoPt& target) const {
-   float distance = distanceTo(target);
-    float lambda = asinf((target._elev-_elev)/distance);
-    return TO_DEGF(lambda);
+    if (*this == target) {return 90.;}
+    float distance = distanceTo(target);
+    if(distance > 0.) {
+        float lambda = asinf((target._elev-_elev)/distance);
+        return TO_DEGF(lambda);
+    } else {
+        return 90.;
+    }
 }
 
 
