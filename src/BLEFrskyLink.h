@@ -19,20 +19,22 @@ public:
     BLEFrskyLink();
     ~BLEFrskyLink();
 
+    bool connect(uint64_t address);
     bool connect(BLEAdvertisedDevice *device);
     
-    virtual void close();
-
+    void close();
     inline bool isConnected()
     {
         return _client != nullptr;
     };
 
-    void onConnect(BLEClient *pclient);
-    void onDisconnect(BLEClient *pclient);
+    virtual void setLinkListener(LinkListener* plistener) override;
+
+    void onConnect(BLEClient *pclient) override;
+    void onDisconnect(BLEClient *pclient) override;
 
 protected:
-    friend void blefrskydatasource_notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, void *param);
+    static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify, void *param);
 
     void received(const uint8_t *pData, size_t len);
 

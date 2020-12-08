@@ -4,7 +4,7 @@ TelemetryListener::~TelemetryListener() {}
 void TelemetryListener::onFrameDecoded(TelemetryDecoder* decoder, uint32_t id) {}
 void TelemetryListener::onFrameError(TelemetryDecoder* decoder, TelemetryError error, uint32_t param) {}
 void TelemetryListener::onFuelData(TelemetryDecoder* decoder, int fuel) {}
-void TelemetryListener::onGPSData(TelemetryDecoder* decoder, double latitude, double longitude) {}
+void TelemetryListener::onGPSData(TelemetryDecoder* decoder, float latitude, float longitude) {}
 void TelemetryListener::onVBATData(TelemetryDecoder* decoder, float voltage) {}
 void TelemetryListener::onCellVoltageData(TelemetryDecoder* decoder, float voltage) {}
 void TelemetryListener::onCurrentData(TelemetryDecoder* decoder, float current) {}
@@ -23,14 +23,12 @@ void TelemetryListener::onAirSpeedData(TelemetryDecoder* decoder, float speed) {
 
 
 
-TelemetryDecoder::TelemetryDecoder(std::string name) : _name(name), _listener(nullptr) {
+TelemetryDecoder::TelemetryDecoder(std::string name) : DataDecoder(name), _listener(nullptr) {
     
 };
 TelemetryDecoder::~TelemetryDecoder() {
     _listener= nullptr;
 };
-
-std::string TelemetryDecoder::getName() { return _name; }
 
 void TelemetryDecoder::setTelemetryListener(TelemetryListener* listener) {
     _listener = listener;
@@ -45,7 +43,7 @@ void TelemetryDecoder::fireFrameError(TelemetryError error, uint32_t param) {
 void TelemetryDecoder::fireFuelData(int fuel) { 
     if(_listener!=nullptr) _listener->onFuelData(this, fuel); 
 }
-void TelemetryDecoder::fireGPSData(double latitude, double longitude) { 
+void TelemetryDecoder::fireGPSData(float latitude, float longitude) { 
     if(_listener!=nullptr) _listener->onGPSData(this, latitude,longitude); 
 }
 void TelemetryDecoder::fireVBATData(float voltage) { 

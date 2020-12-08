@@ -71,7 +71,7 @@ void CRSFDecoder::process(uint8_t data)
     case LENGTH:
         if(data < 2 || data> MAX_PAYLOAD) {
             _state = IDLE;
-            fireFrameError(ERROR_BAD_FORMAT);
+            fireFrameError(TLM_ERROR_BAD_FORMAT);
         } else {
             _length = data-1;  // remove CRC from the length
             _index = 0;
@@ -91,7 +91,7 @@ void CRSFDecoder::process(uint8_t data)
         if(_crc == data) {
             decodeFrame();
         } else {
-            fireFrameError(ERROR_CRC);
+            fireFrameError(TLM_ERROR_CRC);
         }
         break;
     }
@@ -108,10 +108,12 @@ bool CRSFDecoder::decodeFrame() {
             }
             break;
         case GPS_ID: {
+            bool hasFix = false;
             int32_t lat,lon;
             fireFrameDecoded(id);
             if (getCrossfireTelemetryValue(lat, &_buffer[1], 4) &&
                 getCrossfireTelemetryValue(lon, &_buffer[5], 4)) {
+                hasFix = true;
                 fireGPSData(lat/10.f, lon/10.f);
             }
             int32_t speed;
@@ -128,7 +130,7 @@ bool CRSFDecoder::decodeFrame() {
             }
             int32_t satellites;
             if (getCrossfireTelemetryValue(satellites, &_buffer[15], 1)) {
-                fireGPSStateData(satellites, true);
+                fireGPSStateData(satellites, hasFix);
             }
             break;
         }
@@ -180,7 +182,7 @@ bool CRSFDecoder::decodeFrame() {
         }
         default:
 //            fireFrameDecoded(id);
-            fireFrameError(ERROR_UNKNOWN_ID, id);
+            fireFrameError(TLM_ERROR_UNKNOWN_ID, id);
             break;
 
     }

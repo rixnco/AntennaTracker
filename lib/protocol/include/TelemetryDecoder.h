@@ -1,10 +1,10 @@
 #ifndef __TELEMETRY_DECODER_H__
 #define __TELEMETRY_DECODER_H__
 
+#include "DataDecoder.h"
 #include <stdint.h>
-#include <string>
 
-enum TelemetryError { ERROR_CRC, ERROR_OVERFLOW, ERROR_UNKNOWN_ID, ERROR_BAD_FORMAT };
+enum TelemetryError { TLM_ERROR_CRC, TLM_ERROR_OVERFLOW, TLM_ERROR_UNKNOWN_ID, TLM_ERROR_BAD_FORMAT };
 
 class TelemetryDecoder;
 
@@ -15,7 +15,7 @@ public:
     virtual void onFrameDecoded(TelemetryDecoder* decoder, uint32_t id);
     virtual void onFrameError(TelemetryDecoder* decoder, TelemetryError cause, uint32_t param);
     virtual void onFuelData(TelemetryDecoder* decoder, int fuel);
-    virtual void onGPSData(TelemetryDecoder* decoder, double latitude, double longitude);
+    virtual void onGPSData(TelemetryDecoder* decoder, float latitude, float longitude);
     virtual void onVBATData(TelemetryDecoder* decoder, float voltage);
     virtual void onCellVoltageData(TelemetryDecoder* decoder, float voltage);
     virtual void onCurrentData(TelemetryDecoder* decoder, float current);
@@ -34,12 +34,10 @@ public:
 };
 
 
-class TelemetryDecoder {
+class TelemetryDecoder : public DataDecoder {
 public:
     TelemetryDecoder(std::string name);
     virtual ~TelemetryDecoder();
-
-    std::string getName();
 
     virtual void reset() = 0;
 
@@ -50,7 +48,7 @@ protected:
     void fireFrameDecoded(uint32_t id);
     void fireFrameError(TelemetryError cause, uint32_t param=0);
     void fireFuelData(int fuel);
-    void fireGPSData(double latitude, double longitude);
+    void fireGPSData(float latitude, float longitude);
     void fireVBATData(float voltage);
     void fireCellVoltageData(float voltage);
     void fireCurrentData(float current);
@@ -67,7 +65,6 @@ protected:
     void fireGSpeedData(float speed);
     void fireAirSpeedData(float speed);
 private:
-    std::string         _name;
     TelemetryListener*  _listener;
 };
 

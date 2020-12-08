@@ -6,8 +6,6 @@ const BLEUUID FRSKY_SERVICE_UUID((uint16_t)0xFFF0);
 // Characteristics
 const BLEUUID FRSKY_CHARACTERISTIC_UUID((uint16_t)0xFFF6);
 
-void blefrskydatasource_notifyCallback(BLERemoteCharacteristic *, uint8_t *, size_t, bool, void *);
-
 BLEFrskyLink::BLEFrskyLink() : _client(nullptr),
                                    _frskyService(nullptr),
                                    _frskyCharacteristic(nullptr),
@@ -21,6 +19,11 @@ BLEFrskyLink::~BLEFrskyLink()
 
 bool BLEFrskyLink::connect(BLEAdvertisedDevice *device)
 {
+    uint64_t addr = (*(uint64_t*)device->getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
+    return connect(addr);
+}
+bool BLEFrskyLink::connect(uint64_t address)
+{
     if (_client != nullptr)
     {
         // Serial.println("already connected ...");
@@ -31,10 +34,11 @@ bool BLEFrskyLink::connect(BLEAdvertisedDevice *device)
     // Serial.print(device->getAddress().toString().c_str());
     // Serial.println(")");
 
+    BLEAddress addr = BLEAddress((uint8_t*)&address);
     _client = new BLEClient(); //BLEDevice::createClient();
     _client->setClientCallbacks(this);
     // Connect to the remove BLE Server.
-    if (!_client->connect(device))
+    if (!_client->connect(addr))
     {
         close();
         // Serial.println("Connection... Failed");
@@ -80,7 +84,7 @@ bool BLEFrskyLink::connect(BLEAdvertisedDevice *device)
         }
         else
         {
-            _frskyCharacteristic->registerForNotify(blefrskydatasource_notifyCallback, true, this);
+            _frskyCharacteristic->registerForNotify(notifyCallback, true, this);
             // Serial.println("...OK");
         }
     }
@@ -90,8 +94,6 @@ bool BLEFrskyLink::connect(BLEAdvertisedDevice *device)
         close();
         return false;
     }
-
-   fireConnectEvent();
 
     return true;
 };
@@ -112,27 +114,38 @@ void BLEFrskyLink::close()
     BLEClient *tmp = _client;
     _client = nullptr;
     delete tmp;
-
-    fireDisconnectEvent();
 };
+
+
+void BLEFrskyLink::setLinkListener(LinkListener* plistener) 
+{
+    DataLink::setLinkListener(plistener);
+    if(isConnected())
+    {
+        fireLinkConnectedEvent();
+    }
+};
+
 
 void BLEFrskyLink::onConnect(BLEClient *pclient)
 {
-}
+    fireLinkConnectedEvent();
+};
 
 void BLEFrskyLink::onDisconnect(BLEClient *pclient)
 {
     if (_client == nullptr)
         return;
     close();
-}
+    fireLinkDisconnectedEvent();
+};
 
 void BLEFrskyLink::received(const uint8_t *pData, size_t len)
 {
     fireDataReceivedEvent(pData, len);
 };
 
-void blefrskydatasource_notifyCallback(
+void BLEFrskyLink::notifyCallback(
     BLERemoteCharacteristic *pBLERemoteCharacteristic,
     uint8_t *pData,
     size_t length,

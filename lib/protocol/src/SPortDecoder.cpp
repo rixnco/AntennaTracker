@@ -1,7 +1,5 @@
 #include "SPortDecoder.h"
 
-//#include <Arduino.h>
-
 #define START_BYTE 0x7E
 #define DATA_START 0x10
 #define ESCAPE_BYTE 0x7D
@@ -161,7 +159,7 @@ void SPortDecoder::process(uint8_t data)
 
 
         // if(crc != 0x00FF) {
-        //     fireFrameError(ERROR_CRC);
+        //     fireFrameError(TLM_ERROR_CRC);
         //     return;
         // }
         uint8_t sensorType = _buffer[0];
@@ -298,7 +296,7 @@ void SPortDecoder::process(uint8_t data)
                 break;
             default:
 //                fireFrameDecoded(dataType);
-                fireFrameError(ERROR_UNKNOWN_ID, dataType);
+                fireFrameError(TLM_ERROR_UNKNOWN_ID, dataType);
                 break;
             }
         }

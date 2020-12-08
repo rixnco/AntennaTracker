@@ -3,10 +3,9 @@
 
 
 LinkListener::~LinkListener() {}
-
 void LinkListener::onLinkConnected(DataLink* link) {}
 void LinkListener::onLinkDisconnected(DataLink* link) {}
-void LinkListener::onDataReceived(DataLink* link, uint8_t data) {}
+
 
 DataLink::DataLink() : _listener(nullptr) {
 }
@@ -17,16 +16,14 @@ DataLink::~DataLink() {
 void DataLink::setLinkListener(LinkListener* plistener) {
     _listener= plistener;
 }
-void DataLink::fireConnectEvent() {
+void DataLink::fireLinkConnectedEvent() {
     if(_listener==nullptr) return;
     _listener->onLinkConnected(this);
 }
-
-void DataLink::fireDisconnectEvent() {
+void DataLink::fireLinkDisconnectedEvent() {
     if(_listener==nullptr) return;
     _listener->onLinkDisconnected(this);
 }
-
 void DataLink::fireDataReceivedEvent(uint8_t data) {
     if(_listener==nullptr) return;
     _listener->onDataReceived(this, data);
@@ -38,3 +35,31 @@ void DataLink::fireDataReceivedEvent(const uint8_t *pData, size_t len) {
     }
 }
 
+
+
+DataHandler::DataHandler() 
+{
+}
+
+DataHandler::DataHandler(size_t size) 
+{ 
+    _decoders.reserve(size); 
+}
+
+DataHandler::~DataHandler()
+{
+
+}
+
+void DataHandler::addDecoder(DataDecoder* decoder) 
+{
+    if(decoder==nullptr) return;
+    _decoders.push_back(decoder);
+}
+
+void DataHandler::onDataReceived(DataLink* link, uint8_t data) 
+{
+    for(auto decoder : _decoders) {
+        decoder->process(data);
+    }
+}

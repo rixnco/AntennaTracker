@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-#include <map>
+#include <LiquidCrystal_I2C.h>
 #include <BLEDevice.h>
 #include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
@@ -8,14 +8,27 @@
 #include <CRSFDecoder.h>
 #include <ESP32Stepper.h>
 #include <GeoUtils.h>
+#include <QMC5883LCompass.h>
+#include <HMC5883LCompass.h>
+#include <FrieshDecoder.h>
 
-#include "BLEFrskyLink.h"
 #include "DataLink.h"
-
+#include "BLEFrskyLink.h"
+#include "StreamLink.h"
 
 //--------------------------------------
 //              DEFINES
 //--------------------------------------
+
+
+#define BTN_PIN                 4
+#define LED1_PIN                2
+
+#define SERVO_PIN               25
+#define STEPPER_DIR_PIN         26
+#define STEPPER_STEP_PIN        27
+#define STEPPER_ENA_PIN         14
+#define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
 
 
@@ -23,93 +36,149 @@
 //              Types
 //--------------------------------------
 
-class TelemetryHandler : public TelemetryListener, public LinkListener {
-public:
-    TelemetryHandler() {
-        reset();
-    }
+//-----------------------------------------------------------------------------------------
+// Telemetry stuff
+//-----------------------------------------------------------------------------------------
+class TelemetryHandler : public TelemetryListener
+{
+    // GPS Telemetry ...
+    virtual void onGPSData(TelemetryDecoder *decoder, float latitude, float longitude) override;
+    virtual void onGPSAltitudeData(TelemetryDecoder *decoder, float altitude) override;
+    virtual void onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix) override;
+    virtual void onGSpeedData(TelemetryDecoder *decoder, float speed) override;
 
-    void setLink(DataLink* dataLink) {
-        if(_link != nullptr) {
-            _link->setLinkListener(nullptr);
-        }
-        reset();
-        _link = dataLink;
-        if(_link!= nullptr) {
-            _link->setLinkListener(this);
-            if(_link->isConnected()) onLinkConnected(_link);
-        }
-    }
-
-    bool isProtocolDetected() {
-        return _decoder!= nullptr;
-    }
-
-    virtual void onLinkConnected(DataLink* link) {
-        reset();
-        Serial.println("Link connected...\nDetecting protocol...");
-    }
-    virtual void onLinkDisconnected(DataLink* link) {
-        Serial.println("Link disconnected...");
-    }
-
-    virtual void onDataReceived(DataLink* link, uint8_t data) {
-        if(_decoder != nullptr) {
-            _decoder->process(data);
-        } else {
-            for(auto it : _counter) {
-                it.first->process(data);
-                if(it.second>=10) {
-                    _decoder = it.first;
-                    Serial.print("Protocol detected: ");
-                    Serial.println(_decoder->getName().c_str());
-                    break;
-                }
-            }
-        }
-    }
-
-    virtual void onFrameDecoded(TelemetryDecoder* decoder, uint32_t id)                         { if(_decoder==nullptr) _counter[decoder]+=1; }
-    virtual void onFrameError(TelemetryDecoder* decoder, TelemetryError error, uint32_t param)  { if(_decoder!=decoder) return; Serial.printf("Frame error: %d - 0x%X\n", error, param); }
-    virtual void onFuelData(TelemetryDecoder* decoder, int fuel)                                { if(_decoder!=decoder) return; Serial.printf("Fuel       : %d\n", fuel); }
-    virtual void onGPSData(TelemetryDecoder* decoder, double latitude, double longitude)        { if(_decoder!=decoder) return; Serial.printf("GPS        : %lf, %lf\n", latitude, longitude); }
-    virtual void onVBATData(TelemetryDecoder* decoder, float voltage)                           { if(_decoder!=decoder) return; Serial.printf("VBat       : %.2fV\n", voltage); }
-    virtual void onCellVoltageData(TelemetryDecoder* decoder, float voltage)                    { if(_decoder!=decoder) return; Serial.printf("Cell       : %.2fV\n", voltage); }
-    virtual void onCurrentData(TelemetryDecoder* decoder, float current)                        { if(_decoder!=decoder) return; Serial.printf("Current    : %.2fA\n", current); }
-    virtual void onHeadingData(TelemetryDecoder* decoder, float heading)                        { if(_decoder!=decoder) return; Serial.printf("Heading    : %.2f°\n", heading); }
-    virtual void onRSSIData(TelemetryDecoder* decoder, int rssi)                                { if(_decoder!=decoder) return; Serial.printf("Rssi       : %ddB\n", rssi); }
-    virtual void onRxBtData(TelemetryDecoder* decoder, float voltage)                           { if(_decoder!=decoder) return; Serial.printf("RxBt       : %.2fV\n", voltage); }
-    virtual void onGPSStateData(TelemetryDecoder* decoder, int satellites, bool gpsFix)         { if(_decoder!=decoder) return; Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix); }
-    virtual void onVSpeedData(TelemetryDecoder* decoder, float vspeed)                          { if(_decoder!=decoder) return; Serial.printf("VSpeed     : %.2fm/s\n", vspeed); }
-    virtual void onAltitudeData(TelemetryDecoder* decoder, float altitude)                      { if(_decoder!=decoder) return; Serial.printf("Altitude   : %.2fm\n", altitude); }
-    virtual void onGPSAltitudeData(TelemetryDecoder* decoder, float altitude)                   { if(_decoder!=decoder) return; Serial.printf("GAlt       : %.2fm\n", altitude); }
-    virtual void onDistanceData(TelemetryDecoder* decoder, int distance)                        { if(_decoder!=decoder) return; Serial.printf("Distance   : %.2dm\n", distance); }
-    virtual void onRollData(TelemetryDecoder* decoder, float rollAngle)                         { if(_decoder!=decoder) return; Serial.printf("Roll       : %.2f°\n", rollAngle); }
-    virtual void onPitchData(TelemetryDecoder* decoder, float pitchAngle)                       { if(_decoder!=decoder) return; Serial.printf("Pitch      : %.2f°\n", pitchAngle); }
-    virtual void onGSpeedData(TelemetryDecoder* decoder, float speed)                           { if(_decoder!=decoder) return; Serial.printf("GSpeed     : %.2fm/s\n", speed); }
-    virtual void onAirSpeedData(TelemetryDecoder* decoder, float speed)                         { if(_decoder!=decoder) return; Serial.printf("AirSpeed   : %.2fm/s\n", speed); }
-
-private:
-    void reset() {
-        _decoder = nullptr;
-        _counter[&_sportDecoder]= 0;
-        _counter[&_crsfDecoder] = 0;
-
-        _crsfDecoder.reset();
-        _crsfDecoder.setTelemetryListener(this);
-        _sportDecoder.reset();
-        _sportDecoder.setTelemetryListener(this);
-    }
-
-
-
-    DataLink                        *_link;
-    TelemetryDecoder                *_decoder;
-
-    CRSFDecoder                     _crsfDecoder;
-    SPortDecoder                    _sportDecoder;
-    std::map<TelemetryDecoder*,int> _counter;
+    // Optional ...
+    virtual void onFrameDecoded(TelemetryDecoder *decoder, uint32_t id) override;
+    virtual void onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param) override;
+    virtual void onFuelData(TelemetryDecoder *decoder, int fuel) override;
+    virtual void onVBATData(TelemetryDecoder *decoder, float voltage) override;
+    virtual void onCellVoltageData(TelemetryDecoder *decoder, float voltage) override;
+    virtual void onCurrentData(TelemetryDecoder *decoder, float current) override;
+    virtual void onHeadingData(TelemetryDecoder *decoder, float heading) override;
+    virtual void onRSSIData(TelemetryDecoder *decoder, int rssi) override;
+    virtual void onRxBtData(TelemetryDecoder *decoder, float voltage) override;
+    virtual void onVSpeedData(TelemetryDecoder *decoder, float vspeed) override;
+    virtual void onAltitudeData(TelemetryDecoder *decoder, float altitude) override;
+    virtual void onDistanceData(TelemetryDecoder *decoder, int distance) override;
+    virtual void onRollData(TelemetryDecoder *decoder, float rollAngle) override;
+    virtual void onPitchData(TelemetryDecoder *decoder, float pitchAngle) override;
+    virtual void onAirSpeedData(TelemetryDecoder *decoder, float speed) override;
 };
+
+//-----------------------------------------------------------------------------------------
+// Friesh protocol stuff
+//-----------------------------------------------------------------------------------------
+class FrieshHandler : public FrieshListener
+{
+public:
+    virtual void onFrameError(FrieshDecoder *decoder, FrieshError error, uint32_t param) override;
+    virtual void onCalibrateCompass(FrieshDecoder *decoder) override;
+    virtual void onSetHomeLocation(FrieshDecoder *decoder) override;
+    virtual void onStartTracking(FrieshDecoder *decoder) override;
+    virtual void onStopTracking(FrieshDecoder *decoder) override;
+};
+
+
+//-----------------------------------------------------------------------------------------
+// BLEDataHandler stuff
+//-----------------------------------------------------------------------------------------
+
+class BLEDataHandler : public DataHandler {
+public:
+    BLEDataHandler();
+    BLEDataHandler(size_t size);
+    virtual void onLinkConnected(DataLink* link) override;
+    virtual void onLinkDisconnected(DataLink* link) override;
+};
+
+
+//-----------------------------------------------------------------------------------------
+// BLE stuff
+//-----------------------------------------------------------------------------------------
+
+/**
+ * Scan for BLE servers and find the first one that advertises the service we are looking for.
+ */
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+{
+    /**
+   * Called for each advertising BLE server.
+   */
+    void onResult(BLEAdvertisedDevice advertisedDevice) override;
+};    // MyAdvertisedDeviceCallbacks
+
+
+
+//-----------------------------------------------------------------------------------------
+// State machine stuff
+//-----------------------------------------------------------------------------------------
+
+class State
+{
+public:
+    virtual ~State() {}
+    virtual void enter(){}
+    virtual State *run() = 0;
+    virtual void exit(){}
+};
+
+
+class IdleState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+private:
+    bool _doCalibrate = false;
+};
+
+
+class CalibrationState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+private:
+    int _calibrationData[2][2];
+
+    int      _loops;
+    float    _speed;
+    float    _angle;
+    uint64_t _lastMeasureTime;
+    bool     _doCalibration;
+};
+
+class ConnectionState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+private:
+};
+
+class HomeState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+private:
+    uint64_t _lastProcessTime;
+};
+
+class TrackingState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+    virtual void exit() override;
+private:
+    uint64_t _lastProcessTime;
+};
+
+
+IdleState idleState;
+CalibrationState calibrationState;
+ConnectionState connectionState;
+HomeState       homeState;
+TrackingState   trackingState;
+
+State*      _state = &idleState;
+State*      _lastState = nullptr;;
 
 
 
@@ -121,176 +190,667 @@ private:
 //            Prototypes
 //--------------------------------------
 
+float getHeadingError(float current_heading, float target_heading);
+bool wire_ping(uint8_t addr);
+
+
 //--------------------------------------
 //            Variables
 //--------------------------------------
 
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
-bool scanning;
-bool doConnect;
-BLEAdvertisedDevice target;
+bool    g_calibrated = false;
+uint64_t g_bindAddress = 0x0000000000000000;
+BLEAdvertisedDevice g_bindDevice;
+bool    g_connected = false;;
+bool    g_homed = false;;
+GeoPt   g_homeLocation;
 
-BLEFrskyLink                dataLink;
-TelemetryHandler            telemetryHandler;
-
-ESP32Stepper    stepper;
-Servo           tiltServo;
-
-ESP32Stepper other[6];
+bool    g_gpsFix = false;
+int     g_gpsSatellites;
+GeoPt   g_gpsTarget;
 
 
 
-/**
- * Scan for BLE servers and find the first one that advertises the service we are looking for.
- */
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
- /**
-   * Called for each advertising BLE server.
-   */
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    Serial.print("BLE Advertised Device: ");
-    Serial.println(advertisedDevice.toString().c_str());
-
-    // We have found a device, let us now see if it contains the service we are looking for.
-    if (advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID)) {
-        Serial.println("BLEFrskyClient found");
-        target= advertisedDevice;
-        doConnect=true;
-    }
-
-  } // onResult
-}; // MyAdvertisedDeviceCallbacks
 
 
-volatile uint32_t steps=0;
 
-void stepCallback(ESP32Stepper* stepper) {
-    ++steps;
-}
-void stopCallback(ESP32Stepper* stepper) {
-    Serial.println("move done");
-}
+CRSFDecoder         bleCRSFDecoder;
+SPortDecoder        bleSPortDecoder;
+BLEDataHandler      bleDataHandler(2);
+BLEFrskyLink        bleLink;
+
+FrieshDecoder       serialFrieshDecoder;
+CRSFDecoder         serialCRSFDecoder;
+SPortDecoder        serialSPortDecoder;
+DataHandler         serialDataHandler(3);
+StreamLink          serialLink;
+
+TelemetryHandler    telemetryHandler;
+FrieshHandler       frieshHandler;
+
+ESP32Stepper        stepper;
+Servo               tiltServo;
+QMC5883LCompass     qmc5883;
+HMC5883LCompass     hmc5883;
+Compass             *compass;
+//LiquidCrystal_I2C   lcd(0x27); 
+LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
 
 
-void setup() {
-    
-  Serial.begin(115200);
-  Serial.println("Starting Antenna Tracker");
 
-  doConnect=false;
-  scanning=false;
+void setup()
+{
+    Serial.begin(115200);
+    Serial.println("Starting Antenna Tracker");
 
-    telemetryHandler.setLink(&dataLink);
-
-  BLEDevice::init("");
+    pinMode(BTN_PIN, INPUT);
+    pinMode(LED1_PIN, OUTPUT);
+    digitalWrite(LED1_PIN, HIGH);
 
 
-  // Retrieve a Scanner and set the callback we want to use to be informed when we
-  // have detected a new device.  Specify that we want active scanning and start the
-  // scan to run for 5 seconds.
-  BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setInterval(1349);
-  pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
+    Serial.print("Configuring BLE link");
+    bleCRSFDecoder.setTelemetryListener(&telemetryHandler);
+    bleSPortDecoder.setTelemetryListener(&telemetryHandler);
+    bleDataHandler.addDecoder(&bleCRSFDecoder);
+    bleDataHandler.addDecoder(&bleSPortDecoder);
+    bleLink.setLinkListener(&bleDataHandler);
+    Serial.println("...OK");
 
-    Serial.println("Start motor");
+    Serial.print("Configuring serial link");
+    serialFrieshDecoder.setCheckCRC(false);
+    serialFrieshDecoder.setFrieshListener(&frieshHandler);
+    serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
+    serialSPortDecoder.setTelemetryListener(&telemetryHandler);
+    serialDataHandler.addDecoder(&serialFrieshDecoder);
+    serialDataHandler.addDecoder(&serialCRSFDecoder);
+    serialDataHandler.addDecoder(&serialSPortDecoder);
+    serialLink.setLinkListener(&serialDataHandler);
+    serialLink.setStream(&Serial2);
+    Serial2.begin(115200);
+    Serial.println("...OK");
 
-    Serial.print("Attach stepper...");
-    if(!stepper.attach(27,26, 32*64*8)) {
+    Serial.print("Configuring BLE scanner");
+    BLEDevice::init("");
+
+    // Retrieve a Scanner and set the callback we want to use to be informed when we
+    // have detected a new device.  Specify that we want active scanning and start the
+    // scan to run for 5 seconds.
+    BLEScan *pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+    Serial.println("...OK");
+
+    Serial.print("Configuring stepper...");
+    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_STEP_PER_REV))
+    {
         Serial.println("...FAIL");
-        while(true);
+        while (true)
+            ;
     }
     Serial.println("...OK");
 
-    stepper.setStopCallback(stopCallback);
-    stepper.setStepCallback(stepCallback);
+    Serial.print("Configuring servo...");
+    if (!tiltServo.attach(SERVO_PIN))
+    {
+        Serial.println("...FAIL");
+        while (true)
+            ;
+    }
+    Serial.println("...OK");
+    tiltServo.write(20);
 
+    Serial.println("Checking compass...");
+    Wire.begin();
 
-    float speed;
-    float angle;
+    if (wire_ping(0x1E))
+    {
+        Serial.println("Found HMC5883");
+        hmc5883.init();
+        hmc5883.setMode(HMC5883_MODE_CONTINUOUS, HMC5883_ODR_75_HZ, HMC5883_RNG_1_30_GA, HMC5883_OSR_8);
+        compass = &hmc5883;
+    }
+    else
+    {
+        if (wire_ping(0x0D))
+        {
+            Serial.println("Found QMC5883");
+            qmc5883.init();
+            qmc5883.setMode(QMC5883_MODE_CONTINUOUS, QMC5883_ODR_10_HZ, QMC5883_RNG_2_GA, QMC5883_OSR_64);
+            compass = &qmc5883;
+        }
+        else
+        {
+            Serial.println("Initializing Compass...FAIL");
+            while (true)
+                ;
+        }
+    }
+    Serial.println("Initializing Compass...OK");
 
-    steps = 0;
-    speed = 90;
-    angle = 180;
-    Serial.printf("Move %.2f° CW at %.2f°/s\n", fabs(angle), speed);
-    stepper.move(speed, angle);
+    // Scan I2C bus
+    // for(int t=1; t<127; ++t) {
+    //     if(wire_ping(t)) Serial.printf("Found device at address: %02x\n", t);
+    // }
 
-    while(stepper.isMoving()) delay(100);
-    Serial.printf("steps = %u\n", steps);
-
-    steps =0;
-    speed = 45;
-    angle = -180;
-    Serial.printf("Move %.2f° CCW at %.2f°/s\n", fabs(angle), speed);
-    stepper.move(speed, angle);
-
-    while(stepper.isMoving()) delay(100);
-    Serial.printf("steps = %u\n", steps);
-
-    steps =0;
-    speed = 30;
-    angle = DIR_CW;
-    Serial.printf("Move CW at %.2f°/s for 4 second\n", speed);
-    stepper.move(speed, angle);
-    delay(4000);
-    Serial.println("Stopping");
-    stepper.stop();
-    while(stepper.isMoving()) delay(100);
-    Serial.printf("steps = %u\n", steps);
-
-    steps =0;
-    speed = 60;
-    angle = DIR_CCW;
-    Serial.printf("Move CW at %.2f°/s for 2 second\n", speed);
-    stepper.move(speed, angle);
-    delay(2000);
-    Serial.println("Stopping");
-    stepper.stop();
-    while(stepper.isMoving()) delay(100);
-    Serial.printf("steps = %u\n", steps);
-
-    Serial.println("stopped");
-
-
-    tiltServo.attach(32);
-
-    tiltServo.write(90);
-
-    delay(2000);
-
-    tiltServo.write(45);
-
-    delay(2000);
-
-    tiltServo.write(10);
+    lcd.begin(16,2);               // initialize the lcd 
+    lcd.setCursor(0, 0);
+    lcd.print("AntennaTracker");
 
     Serial.println("Started...");
 } // End of setup.
 
-void loop() {
-
-  if(doConnect) {
-    doConnect=false;
-    scanning=false;
-    BLEDevice::getScan()->stop();    
-    if(!dataLink.isConnected()) {
-      Serial.println("Connecting to BLEFrskyClient ");
-      if(!dataLink.connect(&target)) {
-        Serial.println("Connection Failed");
-      }
+void loop()
+{
+    if(_state==nullptr) {
+        Serial.println("State machine terminated !!!");
+        while(true);
     }
-  }
-
-  if (!dataLink.isConnected() ) {
-    if(!scanning) {
-      scanning= true;
-      Serial.println("Start scanning...");
-      BLEDevice::getScan()->start(-1,nullptr, false);  // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+    if(_state != _lastState) {
+        if(_lastState!=nullptr) _lastState->exit();
+        _state->enter();
+        _lastState = _state;
     }
-  }
+    _state = _state->run();
+    
+    serialLink.process();
+}
 
-  delay(10); // Delay between loops.
-} // End of loop
+
+
+void IdleState::enter()
+{
+    // AUTO Calibration
+    Serial.println("IdleState::enter");
+}
+State *IdleState::run()
+{
+    if(!g_calibrated) {
+        return &calibrationState;
+    }
+    if(!g_connected) {
+        return &connectionState;
+    }
+    if(!g_homed) {
+        return &homeState;
+    }
+    return &trackingState;
+}
+
+void CalibrationState::enter()
+{
+    Serial.println("Calibration::enter");
+    g_calibrated = false;
+
+    _calibrationData[0][0] = 999999;
+    _calibrationData[0][1] = -999999;
+    _calibrationData[1][0] = 999999;
+    _calibrationData[1][1] = -999999;
+
+    _loops = 2;
+    _speed = 45;
+    _angle = -390;
+    _lastMeasureTime = 0;
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Calibration");
+    lcd.setCursor(0,1);
+    lcd.print("Btn to start");
+    _doCalibration = false;
+}
+
+State *CalibrationState::run()
+{
+    if(!_doCalibration) 
+    {
+        if(digitalRead(BTN_PIN)==0) {
+            _doCalibration = true;
+            lcd.clear();
+            lcd.setCursor(0,0);
+            lcd.print("Calibrating");
+            lcd.setCursor(0,1);
+            lcd.print("...please wait");
+        }
+        return this;
+    }
+
+    if(!stepper.isMoving()) {
+        if(_loops==0) 
+        {
+            // Now we have finish spinning
+            Serial.println("Done");
+            Serial.print("compass.setCalibration(");
+            Serial.print(_calibrationData[0][0]);
+            Serial.print(", ");
+            Serial.print(_calibrationData[0][1]);
+            Serial.print(", ");
+            Serial.print(_calibrationData[1][0]);
+            Serial.print(", ");
+            Serial.print(_calibrationData[1][1]);
+            Serial.println(");");
+
+            compass->setCalibration(_calibrationData[0][0], _calibrationData[0][1], _calibrationData[1][0], _calibrationData[1][1], -2000, 2000);
+            g_calibrated = true;
+            return &idleState;
+        }
+        --_loops;
+        _angle = -_angle;
+        stepper.move(_speed, _angle);
+    }
+    if(millis()-_lastMeasureTime < 100) return this;
+    _lastMeasureTime = millis();
+
+    compass->read();
+    bool changed = false;
+    // Return XYZ readings
+    float x = compass->getX();
+    float y = compass->getY();
+    if (x < _calibrationData[0][0])
+    {
+        _calibrationData[0][0] = x;
+        changed = true;
+    }
+    if (x > _calibrationData[0][1])
+    {
+        _calibrationData[0][1] = x;
+        changed = true;
+    }
+
+    if (y < _calibrationData[1][0])
+    {
+        _calibrationData[1][0] = y;
+        changed = true;
+    }
+    if (y > _calibrationData[1][1])
+    {
+        _calibrationData[1][1] = y;
+        changed = true;
+    }
+
+    if (changed)
+    {
+        Serial.println("CALIBRATING... Keep moving your sensor around.");
+    }
+
+    return this;
+
+}
+
+
+void ConnectionState::enter()
+{
+    Serial.println("ConnectionState::enter");
+    if(g_bindAddress==0) {
+        Serial.println("Start scanning...");
+        BLEDevice::getScan()->start(-1, nullptr, true); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+    }
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Connection...");
+
+}
+
+State *ConnectionState::run()
+{
+    if(g_connected)
+    {
+        Serial.println("ConnectionState::run -> connected...");
+        return &idleState;
+    }
+    if(g_bindAddress!=0) 
+    {
+        BLEDevice::getScan()->stop();
+
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Connecting");
+        lcd.setCursor(0,1);
+        lcd.printf("> %02X%02X%02X%02X%02X%02X", 
+            (uint8_t)(g_bindAddress>>40),
+            (uint8_t)(g_bindAddress>>32),
+            (uint8_t)(g_bindAddress>>24),
+            (uint8_t)(g_bindAddress>>16),
+            (uint8_t)(g_bindAddress>> 8),
+            (uint8_t)(g_bindAddress    ));
+        Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n", 
+            (uint8_t)(g_bindAddress>>40),
+            (uint8_t)(g_bindAddress>>32),
+            (uint8_t)(g_bindAddress>>24),
+            (uint8_t)(g_bindAddress>>16),
+            (uint8_t)(g_bindAddress>> 8),
+            (uint8_t)(g_bindAddress    ));
+        
+        
+        if(bleLink.connect(g_bindAddress)) {
+            g_connected = true;
+            Serial.println("Connection...OK");
+        } else {
+            Serial.println("Connection...FAIL");
+            g_bindAddress = 0;
+            Serial.println("Start scanning...");
+            BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+        }
+
+    }
+
+    return this;
+}
+
+void HomeState::enter() 
+{
+    Serial.println("HomeState::enter");
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Home position");
+    lcd.setCursor(0,1);
+    lcd.print("Waiting fix...");
+}
+
+State *HomeState::run() 
+{
+    static bool lastFix= true;
+    static GeoPt lastTarget(0,0);
+
+    if(!g_connected) return &idleState;
+
+    if(!g_gpsFix && lastFix) {
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Home position");
+        lcd.setCursor(0,1);
+        lcd.print("Waiting fix...");
+    }
+    if(!g_gpsFix) {
+        lastFix = g_gpsFix;
+        return this;
+    } 
+
+    // We have a fix !!!
+
+    if(lastTarget != g_gpsTarget) {
+        lastTarget= g_gpsTarget;
+        lcd.clear();
+        lcd.print("btn to set HOME");
+        lcd.setCursor(0,1);
+        lcd.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
+    }
+
+    if(digitalRead(BTN_PIN)==0) 
+    {
+        g_homeLocation= g_gpsTarget;
+        g_homed = true;
+        return &idleState;
+    }
+    return this;
+}
+
+
+void TrackingState::enter() 
+{
+    Serial.println("TrackingState::enter");
+    _lastProcessTime = 0;
+    lcd.clear();
+    lcd.print("Tracking:");
+
+}
+
+State *TrackingState::run() 
+{
+    if(!g_calibrated) return &idleState;
+    if(!g_homed) return &idleState;
+    if(!g_connected) return &idleState;
+    
+    if(!g_gpsFix) return this;
+
+    static int cnt= 0;
+
+    if(millis() - _lastProcessTime < 100) return this;
+    _lastProcessTime=millis();
+    
+    if(g_homeLocation.distanceTo(g_gpsTarget)< 20) {
+        if(stepper.isMoving()) {
+            stepper.stop();
+            lcd.clear();
+            lcd.print("Tracking:");
+            lcd.setCursor(0,1);
+            lcd.print("too close...");
+        }
+        return this;
+    }
+
+    compass->read();
+
+    // Return Azimuth reading
+    int a = compass->getAzimuth();
+    float target = g_homeLocation.azimuthTo(g_gpsTarget);
+    while(target<0) target+=360;
+    while(target>=360) target-=360;
+    float error = getHeadingError(a, target);
+    float speed = error * 2;
+
+    if ( cnt == 0 ) {
+        lcd.setCursor(0,0);
+        lcd.printf("Tracking: %.1f   ", target);
+        lcd.setCursor(0,1);
+        lcd.printf("azimuth %d     ", a);
+
+        Serial.printf("azimuth=%d   target=%.1f   error=%.1f  speed: %.1f\n", a, target, error, speed);
+    }
+    cnt = (cnt+1) % 10;
+
+    float dir = speed >= 0 ? DIR_CW : DIR_CCW;
+    speed = fabs(speed);
+    if (speed > 90)
+    {
+        speed = 90;
+    }
+    stepper.move(speed, dir);
+
+    return this;
+}
+
+void TrackingState::exit()
+{
+    stepper.stop();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+bool wire_ping(uint8_t addr)
+{
+    Wire.beginTransmission(addr);
+    return Wire.endTransmission() == 0;
+}
+
+float getHeadingError(float current_heading, float target_heading)
+{
+    float errorDeg;
+    float rawError = target_heading - current_heading;
+    if (rawError < -180.)
+    {
+        errorDeg = -rawError - 180;
+        return errorDeg;
+    }
+    else if (rawError > 180.)
+    {
+        errorDeg = -rawError + 180;
+        return errorDeg;
+    }
+    else
+    {
+        return rawError;
+    }
+}
+
+// TELEMETRY HANDLING
+
+void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
+{
+    g_gpsFix   = true;
+    g_gpsTarget= GeoPt(latitude, longitude);
+    Serial.printf("GPS        : %lf, %lf\n", latitude, longitude);
+}
+void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
+{
+    g_gpsFix = gpsFix;
+    g_gpsSatellites = satellites;
+    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
+}
+void TelemetryHandler::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
+{
+    Serial.printf("GAlt       : %.2fm\n", altitude);
+}
+void TelemetryHandler::onGSpeedData(TelemetryDecoder *decoder, float speed)
+{
+    Serial.printf("GSpeed     : %.2fm/s\n", speed);
+}
+
+
+
+
+void TelemetryHandler::onFrameDecoded(TelemetryDecoder *decoder, uint32_t id)
+{
+    // Do nothing
+//    Serial.printf("received %02X\n", id);
+}
+void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
+{
+//    Serial.printf("Frame error: %d - 0x%X\n", error, param);
+}
+void TelemetryHandler::onFuelData(TelemetryDecoder *decoder, int fuel)
+{
+    // Serial.printf("Fuel       : %d\n", fuel);
+}
+void TelemetryHandler::onVBATData(TelemetryDecoder *decoder, float voltage)
+{
+    // Serial.printf("VBat       : %.2fV\n", voltage);
+}
+void TelemetryHandler::onCellVoltageData(TelemetryDecoder *decoder, float voltage)
+{
+    // Serial.printf("Cell       : %.2fV\n", voltage);
+}
+void TelemetryHandler::onCurrentData(TelemetryDecoder *decoder, float current)
+{
+    // Serial.printf("Current    : %.2fA\n", current);
+}
+void TelemetryHandler::onHeadingData(TelemetryDecoder *decoder, float heading)
+{
+    // Serial.printf("Heading    : %.2f°\n", heading);
+}
+void TelemetryHandler::onRSSIData(TelemetryDecoder *decoder, int rssi)
+{
+    // Serial.printf("Rssi       : %ddB\n", rssi);
+}
+void TelemetryHandler::onRxBtData(TelemetryDecoder *decoder, float voltage)
+{
+    // Serial.printf("RxBt       : %.2fV\n", voltage);
+}
+void TelemetryHandler::onVSpeedData(TelemetryDecoder *decoder, float vspeed)
+{
+    // Serial.printf("VSpeed     : %.2fm/s\n", vspeed);
+}
+void TelemetryHandler::onAltitudeData(TelemetryDecoder *decoder, float altitude)
+{
+    // Serial.printf("Altitude   : %.2fm\n", altitude);
+}
+void TelemetryHandler::onDistanceData(TelemetryDecoder *decoder, int distance)
+{
+    // Serial.printf("Distance   : %.2dm\n", distance);
+}
+void TelemetryHandler::onRollData(TelemetryDecoder *decoder, float rollAngle)
+{
+    // Serial.printf("Roll       : %.2f°\n", rollAngle);
+}
+void TelemetryHandler::onPitchData(TelemetryDecoder *decoder, float pitchAngle)
+{
+    // Serial.printf("Pitch      : %.2f°\n", pitchAngle);
+}
+void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
+{
+    // Serial.printf("AirSpeed   : %.2fm/s\n", speed);
+}
+
+
+// FRIESH PROTOCOL
+
+
+void FrieshHandler::onFrameError(FrieshDecoder *decoder, FrieshError error, uint32_t param)
+{
+    Serial.printf("FRIESH: Frame Error: 0x%02X [%d]\n", error, param);
+}
+void FrieshHandler::onCalibrateCompass(FrieshDecoder *decoder)
+{
+    Serial.printf("FRIESH: calibrate compass...");
+}
+void FrieshHandler::onSetHomeLocation(FrieshDecoder *decoder)
+{
+    Serial.printf("FRIESH: set Home location...");
+}
+void FrieshHandler::onStartTracking(FrieshDecoder *decoder)
+{
+    Serial.printf("FRIESH: start tracking...");
+}
+void FrieshHandler::onStopTracking(FrieshDecoder *decoder)
+{
+    Serial.printf("FRIESH: stop tracking...");
+}
+
+
+//-----------------------------------------------------------------------------------------
+// BLE DataHandler stuff
+//-----------------------------------------------------------------------------------------
+
+BLEDataHandler::BLEDataHandler() : DataHandler() {}
+BLEDataHandler::BLEDataHandler(size_t size) : DataHandler(size) {}
+
+void BLEDataHandler::onLinkConnected(DataLink* link) 
+{
+}
+
+void BLEDataHandler::onLinkDisconnected(DataLink* link)
+{
+    g_connected = false;
+}
+
+
+
+/// BLE
+
+/**
+ * Called for each advertising BLE server.
+ */
+void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
+{
+    Serial.print("BLE Advertised Device: ");
+    Serial.println(advertisedDevice.toString().c_str());
+    uint64_t addr = *(uint64_t*)(advertisedDevice.getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
+
+    // We have found a device, let us now see if it contains the service we are looking for.
+    if ((g_bindAddress==0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID))
+    {
+        Serial.println("Binding to BLEFrskyClient");
+        g_bindAddress= addr;
+        g_bindDevice = advertisedDevice;
+    }
+}
+
+
+
+
+
+
 

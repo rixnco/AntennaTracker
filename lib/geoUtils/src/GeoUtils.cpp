@@ -27,6 +27,18 @@ GeoPt& GeoPt::operator=(const GeoPt& other) {
     return *this;
 }
 
+bool GeoPt::operator ==(const GeoPt& other) 
+{
+    return _lat==other._lat && _lon==other._lon;
+}
+
+bool GeoPt::operator !=(const GeoPt& other)
+{
+    return _lat!=other._lat || _lon!=other._lon;
+}
+
+
+
 float GeoPt::getLatitude() const {
     return _lat;
 }
@@ -53,7 +65,7 @@ float GeoPt::azimuthTo(const GeoPt& target) const {
     float X = cosf(TO_RADF(target._lat)) * sinf(TO_RADF(target._lon-_lon));
     float Y = cosf(TO_RADF(_lat)) * sinf(TO_RADF(target._lat)) -
               (sinf(TO_RADF(_lat)) * cosf(TO_RADF(target._lat)) * cosf(TO_RADF(target._lon - _lon)));
-    float azimuthRad = atan2f(X, Y);
+    float azimuthRad =  atan2f(X, Y) ;
     return TO_DEGF(azimuthRad);
 }
 
