@@ -12,9 +12,8 @@ public:
     GeoPt(const GeoPt& other);
 
     GeoPt& operator =(const GeoPt& other);
-
-    bool operator ==(const GeoPt& other);
-    bool operator !=(const GeoPt& other);
+    bool operator ==(const GeoPt& other) const;
+    bool operator !=(const GeoPt& other) const;
 
     float getLatitude() const;
     float getLongitude() const;
