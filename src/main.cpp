@@ -193,6 +193,10 @@ State*      _lastState = nullptr;;
 float getHeadingError(float current_heading, float target_heading);
 bool wire_ping(uint8_t addr);
 
+void IRAM_ATTR onTimer();
+
+void ledState(bool state);
+void ledBlink(uint16_t* profile, size_t len);
 
 //--------------------------------------
 //            Variables
@@ -238,15 +242,66 @@ Compass             *compass;
 LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
 
 
+hw_timer_t *        _led_timer;
+portMUX_TYPE        _led_timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile size_t     _led_profile_idx;
+volatile size_t     _led_profile_len;
+volatile uint16_t   *_led_profile;
+
+#define LED_ON   (0x8000)
+#define LED_OFF  (0x0000)
+#define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
+
+uint16_t    g_calibration_profile[] = { 
+    LED_ON  |  100,
+    LED_OFF | 1400
+};
+
+uint16_t    g_connection_profile[] = { 
+    LED_ON  |  100,
+    LED_OFF |  100,
+    LED_ON  |  100,
+    LED_OFF | 1200
+};
+
+uint16_t    g_fix_profile[] = { 
+    LED_ON  |  100,
+    LED_OFF |  100,
+    LED_ON  | 1200,
+    LED_OFF |  100
+};
+
+uint16_t    g_tracking_profile[] = { 
+    LED_ON  |  300,
+    LED_OFF |  300,
+};
+
+
 
 void setup()
 {
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
 
-    pinMode(BTN_PIN, INPUT);
+    pinMode(BTN_PIN, INPUT_PULLUP);
     pinMode(LED1_PIN, OUTPUT);
-    digitalWrite(LED1_PIN, HIGH);
+    digitalWrite(LED1_PIN, LOW);
+
+
+
+
+    _led_timer = timerBegin(0, 80, true);
+    /* Attach onTimer function to our timer */
+    timerAttachInterrupt(_led_timer, &onTimer, true);
+
+
+    // _led_profile_idx = 0;
+    // _led_profile_len = ;
+    // _led_profile = g_calibration_profile;
+
+
+    // timerAlarmWrite(_led_timer, 1000, true);
+    // timerAlarmEnable(_led_timer);
 
 
     Serial.print("Configuring BLE link");
@@ -359,11 +414,46 @@ void loop()
 }
 
 
+void IRAM_ATTR onTimer() {
+    portENTER_CRITICAL_ISR(&_led_timerMux);
+    _led_profile_idx = (_led_profile_idx+1) % _led_profile_len;
+    digitalWrite(LED1_PIN, (_led_profile[_led_profile_idx]&LED_ON) != 0);
+    timerAlarmWrite(_led_timer, 1000 * (_led_profile[_led_profile_idx]&(~LED_ON)), true);
+    portEXIT_CRITICAL_ISR(&_led_timerMux);    
+}
+
+void ledState(bool state) 
+{
+    portENTER_CRITICAL(&_led_timerMux);
+    timerAlarmDisable(_led_timer);
+    timerStop(_led_timer);
+    digitalWrite(LED1_PIN, state);
+    portEXIT_CRITICAL(&_led_timerMux);    
+}
+
+void ledBlink(uint16_t* profile, size_t len)
+{
+    portENTER_CRITICAL(&_led_timerMux);
+    timerStop(_led_timer);
+    _led_profile= profile;
+    _led_profile_len= len;
+    _led_profile_idx = 0;
+    digitalWrite(LED1_PIN, (_led_profile[_led_profile_idx]&LED_ON) != 0);
+    timerAlarmWrite(_led_timer, 1000 * (_led_profile[_led_profile_idx]&(~LED_ON)), true);
+    timerWrite(_led_timer, 0);
+    timerAlarmEnable(_led_timer);
+    timerStart(_led_timer);
+    portEXIT_CRITICAL(&_led_timerMux);    
+}
+
+
+
 
 void IdleState::enter()
 {
     // AUTO Calibration
     Serial.println("IdleState::enter");
+    ledState(LED_OFF);
 }
 State *IdleState::run()
 {
@@ -394,6 +484,8 @@ void CalibrationState::enter()
     _angle = -390;
     _lastMeasureTime = 0;
 
+    ledBlink(g_calibration_profile, ARRAY_LEN(g_calibration_profile));
+
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Calibration");
@@ -413,6 +505,7 @@ State *CalibrationState::run()
             lcd.print("Calibrating");
             lcd.setCursor(0,1);
             lcd.print("...please wait");
+            ledState(LED_OFF);
         }
         return this;
     }
@@ -490,6 +583,7 @@ void ConnectionState::enter()
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Connection...");
+    ledBlink(g_connection_profile,ARRAY_LEN(g_connection_profile));
 
 }
 
@@ -547,6 +641,7 @@ void HomeState::enter()
     lcd.print("Home position");
     lcd.setCursor(0,1);
     lcd.print("Waiting fix...");
+    ledBlink(g_fix_profile, ARRAY_LEN(g_fix_profile));
 }
 
 State *HomeState::run() 
@@ -569,6 +664,7 @@ State *HomeState::run()
     } 
 
     // We have a fix !!!
+    ledState(LED_ON);
 
     if(lastTarget != g_gpsTarget) {
         lastTarget= g_gpsTarget;
@@ -594,7 +690,7 @@ void TrackingState::enter()
     _lastProcessTime = 0;
     lcd.clear();
     lcd.print("Tracking:");
-
+    ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
 
 State *TrackingState::run() 
