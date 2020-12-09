@@ -61,7 +61,8 @@ ESP32Stepper::ESP32Stepper() :
     _speed(0), 
     _remainingSteps(0), 
     _stepPin(0), 
-    _dirPin(0), 
+    _dirPin(0),
+    _enablePin(0),
     _stepPerRev(0), 
     _reverseDir(false), 
     _stepCallback(nullptr), 
@@ -74,7 +75,7 @@ ESP32Stepper::~ESP32Stepper() {
     detach();
 }
 
-bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint32_t stepPerRev, bool reverseDir)
+bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint8_t enablePin, uint32_t stepPerRev, bool reverseDir)
 {
     if(_instance!=nullptr) {
         // Already attached.
@@ -96,6 +97,7 @@ bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint32_t stepPerRev, 
 
     _stepPin = stepPin;
     _dirPin = dirPin;
+    _enablePin = enablePin;
     _stepPerRev = stepPerRev;
     _reverseDir = reverseDir;
 
@@ -108,6 +110,16 @@ bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint32_t stepPerRev, 
 
     gpio_config(&conf);
     gpio_set_level((gpio_num_t)_dirPin, 0);
+
+    gpio_config_t conf_enbale_pin;
+    conf_enbale_pin.pin_bit_mask = 1 << _enablePin;
+    conf_enbale_pin.mode = GPIO_MODE_OUTPUT;
+    conf_enbale_pin.pull_up_en = GPIO_PULLUP_DISABLE;
+    conf_enbale_pin.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    conf_enbale_pin.intr_type = GPIO_INTR_DISABLE;
+
+    gpio_config(&conf_enbale_pin);
+    gpio_set_level((gpio_num_t)_enablePin, 1);
 
     mcpwm_gpio_init(_instance->unit, _instance->pwm, _stepPin);
 
@@ -156,6 +168,7 @@ void ESP32Stepper::detach() {
     _remainingSteps = 0;
     _stepPin =0;
     _dirPin = 0;
+    _enablePin = 0;
     _stepPerRev = 0;
     _reverseDir = false;
     _stepCallback = nullptr;
@@ -180,7 +193,7 @@ void ESP32Stepper::move(float speed, float angle)
     if (speed <= 0 ) {
         return;
     }
-
+    gpio_set_level((gpio_num_t)_enablePin, 0);
     bool dir= !_reverseDir;
     dir= angle<0?!dir:dir;
     angle= fabs(angle);
@@ -231,6 +244,7 @@ void ESP32Stepper::onStep()
         mcpwm_stop(_instance->unit, _instance->timer);
         _state = IDLE;
         _speed =0;
+        gpio_set_level((gpio_num_t)_enablePin, 1);
         if(_stopCallback != nullptr) _stopCallback(this);
     } else  {
         if(_stepCallback != NULL) {

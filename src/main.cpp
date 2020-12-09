@@ -338,9 +338,6 @@ void setup()
     btnInit();
     ledInit();
 
-    pinMode(STEPPER_ENA_PIN, OUTPUT);
-    digitalWrite(STEPPER_ENA_PIN, LOW);
-
     if(loadSettings())
     {
         Serial.println("settings restored...");
@@ -388,7 +385,7 @@ void setup()
 
 
     Serial.print("Configuring stepper...");
-    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_STEP_PER_REV))
+    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV))
     {
         Serial.println("...FAIL");
         while (true)
