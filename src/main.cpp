@@ -25,8 +25,8 @@
 #define LED1_PIN                2
 
 #define SERVO_PIN               25
-#define STEPPER_DIR_PIN         26
-#define STEPPER_STEP_PIN        27
+#define STEPPER_DIR_PIN         27
+#define STEPPER_STEP_PIN        26
 #define STEPPER_ENA_PIN         14
 #define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
@@ -285,7 +285,9 @@ void setup()
 
     pinMode(BTN_PIN, INPUT_PULLUP);
     pinMode(LED1_PIN, OUTPUT);
+    pinMode(STEPPER_ENA_PIN, OUTPUT);
     digitalWrite(LED1_PIN, LOW);
+    digitalWrite(STEPPER_ENA_PIN, HIGH);
 
 
 
@@ -339,7 +341,7 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring stepper...");
-    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_STEP_PER_REV))
+    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV))
     {
         Serial.println("...FAIL");
         while (true)

@@ -19,7 +19,7 @@ public:
     ESP32Stepper();
     virtual ~ESP32Stepper();
     
-    bool attach(uint8_t stepPin, uint8_t dirPin, uint32_t stepPerRev, bool reverseDir=false);
+    bool attach(uint8_t stepPin, uint8_t dirPin, uint8_t enablePin, uint32_t stepPerRev, bool reverseDir=false);
     void detach();
     inline bool isAttached() { return _instance!=nullptr; }
 
@@ -51,6 +51,7 @@ private:
 
     uint8_t     _stepPin;
     uint8_t     _dirPin;
+    uint8_t     _enablePin;
     uint32_t    _stepPerRev;
     bool        _reverseDir;
 
