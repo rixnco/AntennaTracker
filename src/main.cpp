@@ -1,5 +1,7 @@
 #include <Arduino.h>
 
+
+#include <EEPROM.h>
 #include <LiquidCrystal_I2C.h>
 #include <BLEDevice.h>
 #include <ESP32Servo.h>
@@ -30,11 +32,29 @@
 #define STEPPER_ENA_PIN         14
 #define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
-
+#define EEPROM_SIZE             256
 
 //--------------------------------------
 //              Types
 //--------------------------------------
+
+#define SETTINGS_MAGIC          0xDEADBEEF
+#define SETTINGS_VERSION        100
+
+typedef struct {
+    uint32_t    magic;
+    uint32_t    version;
+    bool        compassCalibrated;
+    int32_t     compassMinX; 
+    int32_t     compassMaxX; 
+    int32_t     compassMinY; 
+    int32_t     compassMaxY; 
+    uint64_t    bleRemoteAddress;
+    bool        homed;
+    float       homeLattitude;
+    float       homeLongitude;
+    float       homeElevation;
+} settings_t;
 
 //-----------------------------------------------------------------------------------------
 // Telemetry stuff
@@ -123,12 +143,20 @@ public:
 };
 
 
+class StartupState : public State {
+public:
+    virtual void enter() override;
+    virtual State *run() override;
+private:
+    bool _pressed;
+    bool _long_press;
+};
+
 class IdleState : public State {
 public:
     virtual void enter() override;
     virtual State *run() override;
 private:
-    bool _doCalibrate = false;
 };
 
 
@@ -137,19 +165,17 @@ public:
     virtual void enter() override;
     virtual State *run() override;
 private:
-    int _calibrationData[2][2];
-
     int      _loops;
     float    _speed;
     float    _angle;
     uint64_t _lastMeasureTime;
-    bool     _doCalibration;
 };
 
 class ConnectionState : public State {
 public:
     virtual void enter() override;
     virtual State *run() override;
+    virtual void exit() override;
 private:
 };
 
@@ -171,13 +197,14 @@ private:
 };
 
 
-IdleState idleState;
-CalibrationState calibrationState;
-ConnectionState connectionState;
-HomeState       homeState;
-TrackingState   trackingState;
+StartupState        startupState;
+IdleState           idleState;
+CalibrationState    calibrationState;
+ConnectionState     connectionState;
+HomeState           homeState;
+TrackingState       trackingState;
 
-State*      _state = &idleState;
+State*      _state = &startupState;
 State*      _lastState = nullptr;;
 
 
@@ -193,21 +220,23 @@ State*      _lastState = nullptr;;
 float getHeadingError(float current_heading, float target_heading);
 bool wire_ping(uint8_t addr);
 
-void IRAM_ATTR onTimer();
 
-void ledState(bool state);
-void ledBlink(uint16_t* profile, size_t len);
+
+settings_t g_settings;
+
+void storeSettings();
+void resetSettings();
+bool loadSettings();
+
 
 //--------------------------------------
 //            Variables
 //--------------------------------------
 
 
-bool    g_calibrated = false;
-uint64_t g_bindAddress = 0x0000000000000000;
-BLEAdvertisedDevice g_bindDevice;
+
+uint64_t g_remoteAddress = 0x0000000000000000;
 bool    g_connected = false;;
-bool    g_homed = false;;
 GeoPt   g_homeLocation;
 
 bool    g_gpsFix = false;
@@ -242,6 +271,27 @@ Compass             *compass;
 LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
 
 
+// BUTTON Stuff
+#define BTN_LONG_PRESS_TIME   3000
+#define BTN_DEBOUNCE_MS         40
+
+void btnInit();
+void IRAM_ATTR  btnChangedISR();
+bool            isButtonPressed();
+uint64_t        getButtonPressTime();
+void            resetButtonPressTime();
+
+portMUX_TYPE      _btnMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint64_t _btn_state_time;
+volatile bool     _btn_state;
+
+
+// LED Stuff
+void ledInit();
+void IRAM_ATTR onLedTimer();
+void ledState(bool state);
+void ledBlink(uint16_t* profile, size_t len);
+
 hw_timer_t *        _led_timer;
 portMUX_TYPE        _led_timerMux = portMUX_INITIALIZER_UNLOCKED;
 volatile size_t     _led_profile_idx;
@@ -252,7 +302,7 @@ volatile uint16_t   *_led_profile;
 #define LED_OFF  (0x0000)
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
 
-uint16_t    g_calibration_profile[] = { 
+uint16_t    g_startup_profile[] = { 
     LED_ON  |  100,
     LED_OFF | 1400
 };
@@ -280,29 +330,25 @@ uint16_t    g_tracking_profile[] = {
 
 void setup()
 {
+    EEPROM.begin(EEPROM_SIZE);
+
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
 
-    pinMode(BTN_PIN, INPUT_PULLUP);
-    pinMode(LED1_PIN, OUTPUT);
-    digitalWrite(LED1_PIN, LOW);
+    btnInit();
+    ledInit();
 
+    pinMode(STEPPER_ENA_PIN, OUTPUT);
+    digitalWrite(STEPPER_ENA_PIN, LOW);
 
-
-
-    _led_timer = timerBegin(0, 80, true);
-    /* Attach onTimer function to our timer */
-    timerAttachInterrupt(_led_timer, &onTimer, true);
-
-
-    // _led_profile_idx = 0;
-    // _led_profile_len = ;
-    // _led_profile = g_calibration_profile;
-
-
-    // timerAlarmWrite(_led_timer, 1000, true);
-    // timerAlarmEnable(_led_timer);
-
+    if(loadSettings())
+    {
+        Serial.println("settings restored...");
+    } 
+    else 
+    {
+        Serial.println("Using default settings...");
+    }
 
     Serial.print("Configuring BLE link");
     bleCRSFDecoder.setTelemetryListener(&telemetryHandler);
@@ -336,7 +382,10 @@ void setup()
     pBLEScan->setInterval(1349);
     pBLEScan->setWindow(449);
     pBLEScan->setActiveScan(true);
+
+    g_connected= false;
     Serial.println("...OK");
+
 
     Serial.print("Configuring stepper...");
     if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_STEP_PER_REV))
@@ -383,7 +432,22 @@ void setup()
                 ;
         }
     }
+    if(g_settings.compassCalibrated) {
+        compass->setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
+        Serial.println("Restored compass calibration");
+    }
+
     Serial.println("Initializing Compass...OK");
+
+    if(g_settings.bleRemoteAddress!=0) {
+        Serial.println("Restored BLE Remote address");
+    }
+
+    if(g_settings.homed) {
+        Serial.println("Restored home location");
+        g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);        
+    }
+
 
     // Scan I2C bus
     // for(int t=1; t<127; ++t) {
@@ -413,8 +477,99 @@ void loop()
     serialLink.process();
 }
 
+// Settings Stuff
+void resetSettings() {
+    memset(&g_settings, 0, sizeof(g_settings));
+    g_settings.magic   = SETTINGS_MAGIC;
+    g_settings.version = SETTINGS_VERSION;
+    storeSettings();
+}
 
-void IRAM_ATTR onTimer() {
+void storeSettings() {
+    EEPROM.put<settings_t>(0, g_settings);
+    EEPROM.commit();
+    Serial.println(">>> settings stored");
+}
+
+bool loadSettings() {
+    uint32_t magic;
+    EEPROM.get<uint32_t>(0, magic);
+    if(magic== SETTINGS_MAGIC) 
+    {
+        // We got some settings stored in EEPROM
+        uint32_t version;
+        EEPROM.get<uint32_t>(4, version);
+        if(version==SETTINGS_VERSION)
+        {
+            // Just read settings
+            EEPROM.get<settings_t>(0, g_settings);
+            return true;
+        }
+        else 
+        {
+            // Need to convert stored settings to our version
+            // For now just reset settings to our version's default.
+        }
+    }
+    resetSettings();
+    
+    return false;
+}
+
+
+// BUTTON Stuff
+void btnInit() 
+{
+    pinMode(BTN_PIN, INPUT_PULLUP);
+    _btn_state = false;
+    attachInterrupt(BTN_PIN, btnChangedISR, CHANGE);
+}
+
+void IRAM_ATTR  btnChangedISR() {
+    uint64_t now= millis();
+
+    portENTER_CRITICAL_ISR(&_btnMux);
+    _btn_state_time=now;
+    _btn_state= !digitalRead(BTN_PIN);
+    portEXIT_CRITICAL_ISR(&_btnMux);
+}
+
+bool isButtonPressed() {
+    bool res;
+    portENTER_CRITICAL(&_btnMux);
+    res = _btn_state && (millis()-_btn_state_time>BTN_DEBOUNCE_MS);
+    portEXIT_CRITICAL(&_btnMux);
+     return res; 
+}
+
+uint64_t getButtonPressTime() 
+{
+    uint64_t time=0;
+    portENTER_CRITICAL(&_btnMux);
+    if(_btn_state) time= millis()-_btn_state_time;
+    portEXIT_CRITICAL(&_btnMux);
+    return time;
+}
+
+void resetButtonPressTime()
+{
+    portENTER_CRITICAL(&_btnMux);
+    if(_btn_state) _btn_state_time= millis();
+    portEXIT_CRITICAL(&_btnMux);
+
+}
+
+
+void ledInit()
+{
+    pinMode(LED1_PIN, OUTPUT);
+    digitalWrite(LED1_PIN, LOW);
+    _led_timer = timerBegin(0, 80, true);
+    /* Attach onTimer function to our timer */
+    timerAttachInterrupt(_led_timer, &onLedTimer, true);
+}
+
+void IRAM_ATTR onLedTimer() {
     portENTER_CRITICAL_ISR(&_led_timerMux);
     _led_profile_idx = (_led_profile_idx+1) % _led_profile_len;
     digitalWrite(LED1_PIN, (_led_profile[_led_profile_idx]&LED_ON) != 0);
@@ -447,6 +602,46 @@ void ledBlink(uint16_t* profile, size_t len)
 }
 
 
+void StartupState::enter()
+{
+    // AUTO Calibration
+    Serial.println("StartupState::enter");
+
+    resetButtonPressTime();
+    _pressed    = false;
+    _long_press = false;    
+
+    ledBlink(g_startup_profile, ARRAY_LEN(g_startup_profile));
+    lcd.clear();
+    lcd.print("Click to start");
+    lcd.setCursor(0,1);
+    lcd.print("Hold to reset");
+}
+
+State *StartupState::run()
+{
+    static uint64_t lastTime=0;
+
+    if(millis() - lastTime < 30) return this;
+    lastTime= millis();
+
+
+    if(!isButtonPressed()) 
+    {
+        if(_long_press) {
+            resetSettings();
+        }
+        if(_pressed) return &idleState;
+        return this;
+    }
+    _pressed = true;
+    if(getButtonPressTime()>BTN_LONG_PRESS_TIME) {
+        ledState(LED_ON);
+        _long_press = true;
+    }
+
+    return this;
+}
 
 
 void IdleState::enter()
@@ -457,13 +652,13 @@ void IdleState::enter()
 }
 State *IdleState::run()
 {
-    if(!g_calibrated) {
+    if(!g_settings.compassCalibrated) {
         return &calibrationState;
     }
     if(!g_connected) {
         return &connectionState;
     }
-    if(!g_homed) {
+    if(!g_settings.homed) {
         return &homeState;
     }
     return &trackingState;
@@ -472,61 +667,44 @@ State *IdleState::run()
 void CalibrationState::enter()
 {
     Serial.println("Calibration::enter");
-    g_calibrated = false;
-
-    _calibrationData[0][0] = 999999;
-    _calibrationData[0][1] = -999999;
-    _calibrationData[1][0] = 999999;
-    _calibrationData[1][1] = -999999;
+    g_settings.compassCalibrated = false;
+    g_settings.compassMinX = 999999;
+    g_settings.compassMaxX = -999999;
+    g_settings.compassMinY = 999999;
+    g_settings.compassMaxY = -999999;
 
     _loops = 2;
     _speed = 45;
     _angle = -390;
     _lastMeasureTime = 0;
 
-    ledBlink(g_calibration_profile, ARRAY_LEN(g_calibration_profile));
-
-    lcd.clear();
+    ledState(LED_OFF);
     lcd.setCursor(0,0);
-    lcd.print("Calibration");
+    lcd.print("Calibrating");
     lcd.setCursor(0,1);
-    lcd.print("Btn to start");
-    _doCalibration = false;
+    lcd.print("...please wait");
 }
 
 State *CalibrationState::run()
 {
-    if(!_doCalibration) 
-    {
-        if(digitalRead(BTN_PIN)==0) {
-            _doCalibration = true;
-            lcd.clear();
-            lcd.setCursor(0,0);
-            lcd.print("Calibrating");
-            lcd.setCursor(0,1);
-            lcd.print("...please wait");
-            ledState(LED_OFF);
-        }
-        return this;
-    }
-
     if(!stepper.isMoving()) {
         if(_loops==0) 
         {
             // Now we have finish spinning
             Serial.println("Done");
             Serial.print("compass.setCalibration(");
-            Serial.print(_calibrationData[0][0]);
+            Serial.print(g_settings.compassMinX);
             Serial.print(", ");
-            Serial.print(_calibrationData[0][1]);
+            Serial.print(g_settings.compassMaxX);
             Serial.print(", ");
-            Serial.print(_calibrationData[1][0]);
+            Serial.print(g_settings.compassMinY);
             Serial.print(", ");
-            Serial.print(_calibrationData[1][1]);
+            Serial.print(g_settings.compassMaxY);
             Serial.println(");");
 
-            compass->setCalibration(_calibrationData[0][0], _calibrationData[0][1], _calibrationData[1][0], _calibrationData[1][1], -2000, 2000);
-            g_calibrated = true;
+            compass->setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
+            g_settings.compassCalibrated = true;
+            storeSettings();
             return &idleState;
         }
         --_loops;
@@ -541,31 +719,31 @@ State *CalibrationState::run()
     // Return XYZ readings
     float x = compass->getX();
     float y = compass->getY();
-    if (x < _calibrationData[0][0])
+    if (x < g_settings.compassMinX)
     {
-        _calibrationData[0][0] = x;
+        g_settings.compassMinX = x;
         changed = true;
     }
-    if (x > _calibrationData[0][1])
+    if (x > g_settings.compassMaxX)
     {
-        _calibrationData[0][1] = x;
+        g_settings.compassMaxX = x;
         changed = true;
     }
 
-    if (y < _calibrationData[1][0])
+    if (y < g_settings.compassMinY)
     {
-        _calibrationData[1][0] = y;
+        g_settings.compassMinY = y;
         changed = true;
     }
-    if (y > _calibrationData[1][1])
+    if (y > g_settings.compassMaxY)
     {
-        _calibrationData[1][1] = y;
+        g_settings.compassMaxY = y;
         changed = true;
     }
 
     if (changed)
     {
-        Serial.println("CALIBRATING... Keep moving your sensor around.");
+        Serial.println("CALIBRATING...");
     }
 
     return this;
@@ -576,10 +754,12 @@ State *CalibrationState::run()
 void ConnectionState::enter()
 {
     Serial.println("ConnectionState::enter");
-    if(g_bindAddress==0) {
+    // if(g_settings.bleRemoteAddress==0) {
         Serial.println("Start scanning...");
-        BLEDevice::getScan()->start(-1, nullptr, true); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
-    }
+        g_remoteAddress=0;
+        BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+    // }
+
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Connection...");
@@ -594,7 +774,7 @@ State *ConnectionState::run()
         Serial.println("ConnectionState::run -> connected...");
         return &idleState;
     }
-    if(g_bindAddress!=0) 
+    if(g_remoteAddress!=0) 
     {
         BLEDevice::getScan()->stop();
 
@@ -603,27 +783,29 @@ State *ConnectionState::run()
         lcd.print("Connecting");
         lcd.setCursor(0,1);
         lcd.printf("> %02X%02X%02X%02X%02X%02X", 
-            (uint8_t)(g_bindAddress>>40),
-            (uint8_t)(g_bindAddress>>32),
-            (uint8_t)(g_bindAddress>>24),
-            (uint8_t)(g_bindAddress>>16),
-            (uint8_t)(g_bindAddress>> 8),
-            (uint8_t)(g_bindAddress    ));
+            (uint8_t)(g_remoteAddress>>40),
+            (uint8_t)(g_remoteAddress>>32),
+            (uint8_t)(g_remoteAddress>>24),
+            (uint8_t)(g_remoteAddress>>16),
+            (uint8_t)(g_remoteAddress>> 8),
+            (uint8_t)(g_remoteAddress    ));
         Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n", 
-            (uint8_t)(g_bindAddress>>40),
-            (uint8_t)(g_bindAddress>>32),
-            (uint8_t)(g_bindAddress>>24),
-            (uint8_t)(g_bindAddress>>16),
-            (uint8_t)(g_bindAddress>> 8),
-            (uint8_t)(g_bindAddress    ));
+            (uint8_t)(g_remoteAddress>>40),
+            (uint8_t)(g_remoteAddress>>32),
+            (uint8_t)(g_remoteAddress>>24),
+            (uint8_t)(g_remoteAddress>>16),
+            (uint8_t)(g_remoteAddress>> 8),
+            (uint8_t)(g_remoteAddress    ));
         
         
-        if(bleLink.connect(g_bindAddress)) {
+        if(bleLink.connect(g_remoteAddress)) {
             g_connected = true;
             Serial.println("Connection...OK");
+            g_settings.bleRemoteAddress= g_remoteAddress;
+            storeSettings();
         } else {
             Serial.println("Connection...FAIL");
-            g_bindAddress = 0;
+            g_remoteAddress = 0;
             Serial.println("Start scanning...");
             BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
         }
@@ -631,6 +813,10 @@ State *ConnectionState::run()
     }
 
     return this;
+}
+
+void ConnectionState::exit() {
+    BLEDevice::getScan()->stop();
 }
 
 void HomeState::enter() 
@@ -674,10 +860,14 @@ State *HomeState::run()
         lcd.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
     }
 
-    if(digitalRead(BTN_PIN)==0) 
+    if(isButtonPressed()) 
     {
         g_homeLocation= g_gpsTarget;
-        g_homed = true;
+        g_settings.homed= true;
+        g_settings.homeLattitude= g_homeLocation.getLatitude();
+        g_settings.homeLongitude= g_homeLocation.getLongitude();
+        g_settings.homeElevation= g_homeLocation.getElevation();
+        storeSettings();
         return &idleState;
     }
     return this;
@@ -695,8 +885,8 @@ void TrackingState::enter()
 
 State *TrackingState::run() 
 {
-    if(!g_calibrated) return &idleState;
-    if(!g_homed) return &idleState;
+    if(!g_settings.compassCalibrated) return &idleState;
+    if(!g_settings.homed) return &idleState;
     if(!g_connected) return &idleState;
     
     if(!g_gpsFix) return this;
@@ -936,11 +1126,11 @@ void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
     uint64_t addr = *(uint64_t*)(advertisedDevice.getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
 
     // We have found a device, let us now see if it contains the service we are looking for.
-    if ((g_bindAddress==0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID))
+    if ( (g_settings.bleRemoteAddress==addr) ||
+         ((g_settings.bleRemoteAddress==0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID)))
     {
         Serial.println("Binding to BLEFrskyClient");
-        g_bindAddress= addr;
-        g_bindDevice = advertisedDevice;
+        g_remoteAddress= addr;
     }
 }
 
