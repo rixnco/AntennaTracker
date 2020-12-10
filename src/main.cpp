@@ -2,7 +2,6 @@
 
 
 #include <EEPROM.h>
-#include <LiquidCrystal_I2C.h>
 #include <BLEDevice.h>
 #include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
@@ -14,6 +13,8 @@
 #include <HMC5883LCompass.h>
 #include <FrieshDecoder.h>
 
+#include "bsp.h"
+#include "display.h"
 #include "DataLink.h"
 #include "BLEFrskyLink.h"
 #include "StreamLink.h"
@@ -21,16 +22,6 @@
 //--------------------------------------
 //              DEFINES
 //--------------------------------------
-
-
-#define BTN_PIN                 4
-#define LED1_PIN                2
-
-#define SERVO_PIN               25
-#define STEPPER_DIR_PIN         26
-#define STEPPER_STEP_PIN        27
-#define STEPPER_ENA_PIN         14
-#define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
 #define EEPROM_SIZE             256
 
@@ -220,10 +211,6 @@ State*      _lastState = nullptr;;
 float getHeadingError(float current_heading, float target_heading);
 bool wire_ping(uint8_t addr);
 
-
-
-settings_t g_settings;
-
 void storeSettings();
 void resetSettings();
 bool loadSettings();
@@ -233,7 +220,7 @@ bool loadSettings();
 //            Variables
 //--------------------------------------
 
-
+settings_t g_settings;
 
 uint64_t g_remoteAddress = 0x0000000000000000;
 bool    g_connected = false;;
@@ -242,10 +229,6 @@ GeoPt   g_homeLocation;
 bool    g_gpsFix = false;
 int     g_gpsSatellites;
 GeoPt   g_gpsTarget;
-
-
-
-
 
 
 CRSFDecoder         bleCRSFDecoder;
@@ -267,39 +250,18 @@ Servo               tiltServo;
 QMC5883LCompass     qmc5883;
 HMC5883LCompass     hmc5883;
 Compass             *compass;
-//LiquidCrystal_I2C   lcd(0x27); 
-LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
+
+// bool                has_lcd = false;
+// LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
+
+// bool                has_oled = false;
+// Adafruit_SSD1306    oled(128, 32, &Wire, 5);
+
+LCD_Display     lcd(0x27);
+OLED_Display    oled(0x3c, 5);
+DisplayProxy    display;
 
 
-// BUTTON Stuff
-#define BTN_LONG_PRESS_TIME   3000
-#define BTN_DEBOUNCE_MS         40
-
-void btnInit();
-void IRAM_ATTR  btnChangedISR();
-bool            isButtonPressed();
-uint64_t        getButtonPressTime();
-void            resetButtonPressTime();
-
-portMUX_TYPE      _btnMux = portMUX_INITIALIZER_UNLOCKED;
-volatile uint64_t _btn_state_time;
-volatile bool     _btn_state;
-
-
-// LED Stuff
-void ledInit();
-void IRAM_ATTR onLedTimer();
-void ledState(bool state);
-void ledBlink(uint16_t* profile, size_t len);
-
-hw_timer_t *        _led_timer;
-portMUX_TYPE        _led_timerMux = portMUX_INITIALIZER_UNLOCKED;
-volatile size_t     _led_profile_idx;
-volatile size_t     _led_profile_len;
-volatile uint16_t   *_led_profile;
-
-#define LED_ON   (0x8000)
-#define LED_OFF  (0x0000)
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
 
 uint16_t    g_startup_profile[] = { 
@@ -403,8 +365,16 @@ void setup()
     Serial.println("...OK");
     tiltServo.write(20);
 
-    Serial.println("Checking compass...");
+
     Wire.begin();
+
+    // Scan I2C bus
+    Serial.println("Scaning I2C bus...");
+    for(int t=1; t<127; ++t) {
+        if(wire_ping(t)) Serial.printf("Found device at address: %02x\n", t);
+    }
+
+    Serial.println("Checking compass...");
 
     if (wire_ping(0x1E))
     {
@@ -445,15 +415,37 @@ void setup()
         g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);        
     }
 
+//    has_lcd = false;
+//    has_oled = wire_ping(0x3c);
+    if(wire_ping(0x3c))
+    {
+        Serial.println("Configuring OLED Display...");
+        display.setDisplay(&oled);
 
-    // Scan I2C bus
-    // for(int t=1; t<127; ++t) {
-    //     if(wire_ping(t)) Serial.printf("Found device at address: %02x\n", t);
-    // }
-
-    lcd.begin(16,2);               // initialize the lcd 
-    lcd.setCursor(0, 0);
-    lcd.print("AntennaTracker");
+        // if(oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        //     oled.clearDisplay();
+        //     oled.setTextSize(1,2);             // Normal 1:1 pixel scale
+        //     oled.setTextColor(SSD1306_WHITE);        // Draw white text
+        //     oled.setCursor(0,0);             // Start at top-left corner
+        //     oled.print("AntennaTracker");            
+        //     oled.display();
+        // } else {
+        //     has_oled= false;
+        // }
+    } else {
+        // has_lcd = wire_ping(0x39);
+        if(wire_ping(0x39)) {
+            Serial.println("Configuring LCD Display...");
+            display.setDisplay(&lcd);
+            // lcd.begin(16,2);               // initialize the lcd 
+            // lcd.setCursor(0, 0);
+            // lcd.print("AntennaTracker");
+        }
+    }
+    display.clear();
+    display.setCursor(0,0);
+    display.print("AntennaTracker");
+    display.show();
 
     Serial.println("Started...");
 } // End of setup.
@@ -514,90 +506,6 @@ bool loadSettings() {
 }
 
 
-// BUTTON Stuff
-void btnInit() 
-{
-    pinMode(BTN_PIN, INPUT_PULLUP);
-    _btn_state = false;
-    attachInterrupt(BTN_PIN, btnChangedISR, CHANGE);
-}
-
-void IRAM_ATTR  btnChangedISR() {
-    uint64_t now= millis();
-
-    portENTER_CRITICAL_ISR(&_btnMux);
-    _btn_state_time=now;
-    _btn_state= !digitalRead(BTN_PIN);
-    portEXIT_CRITICAL_ISR(&_btnMux);
-}
-
-bool isButtonPressed() {
-    bool res;
-    portENTER_CRITICAL(&_btnMux);
-    res = _btn_state && (millis()-_btn_state_time>BTN_DEBOUNCE_MS);
-    portEXIT_CRITICAL(&_btnMux);
-     return res; 
-}
-
-uint64_t getButtonPressTime() 
-{
-    uint64_t time=0;
-    portENTER_CRITICAL(&_btnMux);
-    if(_btn_state) time= millis()-_btn_state_time;
-    portEXIT_CRITICAL(&_btnMux);
-    return time;
-}
-
-void resetButtonPressTime()
-{
-    portENTER_CRITICAL(&_btnMux);
-    if(_btn_state) _btn_state_time= millis();
-    portEXIT_CRITICAL(&_btnMux);
-
-}
-
-
-void ledInit()
-{
-    pinMode(LED1_PIN, OUTPUT);
-    digitalWrite(LED1_PIN, LOW);
-    _led_timer = timerBegin(0, 80, true);
-    /* Attach onTimer function to our timer */
-    timerAttachInterrupt(_led_timer, &onLedTimer, true);
-}
-
-void IRAM_ATTR onLedTimer() {
-    portENTER_CRITICAL_ISR(&_led_timerMux);
-    _led_profile_idx = (_led_profile_idx+1) % _led_profile_len;
-    digitalWrite(LED1_PIN, (_led_profile[_led_profile_idx]&LED_ON) != 0);
-    timerAlarmWrite(_led_timer, 1000 * (_led_profile[_led_profile_idx]&(~LED_ON)), true);
-    portEXIT_CRITICAL_ISR(&_led_timerMux);    
-}
-
-void ledState(bool state) 
-{
-    portENTER_CRITICAL(&_led_timerMux);
-    timerAlarmDisable(_led_timer);
-    timerStop(_led_timer);
-    digitalWrite(LED1_PIN, state);
-    portEXIT_CRITICAL(&_led_timerMux);    
-}
-
-void ledBlink(uint16_t* profile, size_t len)
-{
-    portENTER_CRITICAL(&_led_timerMux);
-    timerStop(_led_timer);
-    _led_profile= profile;
-    _led_profile_len= len;
-    _led_profile_idx = 0;
-    digitalWrite(LED1_PIN, (_led_profile[_led_profile_idx]&LED_ON) != 0);
-    timerAlarmWrite(_led_timer, 1000 * (_led_profile[_led_profile_idx]&(~LED_ON)), true);
-    timerWrite(_led_timer, 0);
-    timerAlarmEnable(_led_timer);
-    timerStart(_led_timer);
-    portEXIT_CRITICAL(&_led_timerMux);    
-}
-
 
 void StartupState::enter()
 {
@@ -609,10 +517,12 @@ void StartupState::enter()
     _long_press = false;    
 
     ledBlink(g_startup_profile, ARRAY_LEN(g_startup_profile));
-    lcd.clear();
-    lcd.print("Click to start");
-    lcd.setCursor(0,1);
-    lcd.print("Hold to reset");
+
+    display.clear();
+    display.print("Click to start");
+    display.setCursor(0,1);
+    display.print("Hold to reset");
+    display.show();
 }
 
 State *StartupState::run()
@@ -676,10 +586,12 @@ void CalibrationState::enter()
     _lastMeasureTime = 0;
 
     ledState(LED_OFF);
-    lcd.setCursor(0,0);
-    lcd.print("Calibrating");
-    lcd.setCursor(0,1);
-    lcd.print("...please wait");
+    display.clear();
+    display.setCursor(0,0);
+    display.print("Calibrating");
+    display.setCursor(0,1);
+    display.print("please wait...");
+    display.show();
 }
 
 State *CalibrationState::run()
@@ -751,17 +663,17 @@ State *CalibrationState::run()
 void ConnectionState::enter()
 {
     Serial.println("ConnectionState::enter");
-    // if(g_settings.bleRemoteAddress==0) {
+    if(g_remoteAddress==0) {
         Serial.println("Start scanning...");
         g_remoteAddress=0;
         BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
-    // }
+    }
+    display.clear();
+    display.setCursor(0,0);
+    display.print("Connection...");
+    display.show();
 
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("Connection...");
     ledBlink(g_connection_profile,ARRAY_LEN(g_connection_profile));
-
 }
 
 State *ConnectionState::run()
@@ -775,17 +687,19 @@ State *ConnectionState::run()
     {
         BLEDevice::getScan()->stop();
 
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print("Connecting");
-        lcd.setCursor(0,1);
-        lcd.printf("> %02X%02X%02X%02X%02X%02X", 
+        display.clear();
+        display.setCursor(0,0);
+        display.print("Connecting");
+        display.setCursor(0,1);
+        display.printf("> %02X%02X%02X%02X%02X%02X", 
             (uint8_t)(g_remoteAddress>>40),
             (uint8_t)(g_remoteAddress>>32),
             (uint8_t)(g_remoteAddress>>24),
             (uint8_t)(g_remoteAddress>>16),
             (uint8_t)(g_remoteAddress>> 8),
             (uint8_t)(g_remoteAddress    ));
+        display.show();
+
         Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n", 
             (uint8_t)(g_remoteAddress>>40),
             (uint8_t)(g_remoteAddress>>32),
@@ -819,11 +733,13 @@ void ConnectionState::exit() {
 void HomeState::enter() 
 {
     Serial.println("HomeState::enter");
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("Home position");
-    lcd.setCursor(0,1);
-    lcd.print("Waiting fix...");
+    display.clear();
+    display.setCursor(0,0);
+    display.print("Home position");
+    display.setCursor(0,1);
+    display.print("Waiting fix...");
+    display.show();
+
     ledBlink(g_fix_profile, ARRAY_LEN(g_fix_profile));
 }
 
@@ -835,11 +751,12 @@ State *HomeState::run()
     if(!g_connected) return &idleState;
 
     if(!g_gpsFix && lastFix) {
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print("Home position");
-        lcd.setCursor(0,1);
-        lcd.print("Waiting fix...");
+        display.clear();
+        display.setCursor(0,0);
+        display.print("Home position");
+        display.setCursor(0,1);
+        display.print("Waiting fix...");
+        display.show();
     }
     if(!g_gpsFix) {
         lastFix = g_gpsFix;
@@ -851,10 +768,12 @@ State *HomeState::run()
 
     if(lastTarget != g_gpsTarget) {
         lastTarget= g_gpsTarget;
-        lcd.clear();
-        lcd.print("btn to set HOME");
-        lcd.setCursor(0,1);
-        lcd.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
+        display.clear();
+        display.setCursor(0,0);
+        display.print("btn to set HOME");
+        display.setCursor(0,1);
+        display.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
+        display.show();
     }
 
     if(isButtonPressed()) 
@@ -875,8 +794,10 @@ void TrackingState::enter()
 {
     Serial.println("TrackingState::enter");
     _lastProcessTime = 0;
-    lcd.clear();
-    lcd.print("Tracking:");
+    display.clear();
+    display.setCursor(0,0);
+    display.print("Tracking:");
+    display.show();
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
 
@@ -896,10 +817,12 @@ State *TrackingState::run()
     if(g_homeLocation.distanceTo(g_gpsTarget)< 20) {
         if(stepper.isMoving()) {
             stepper.stop();
-            lcd.clear();
-            lcd.print("Tracking:");
-            lcd.setCursor(0,1);
-            lcd.print("too close...");
+            display.clear();
+            display.setCursor(0,0);
+            display.print("Tracking:");
+            display.setCursor(0,1);
+            display.print("too close...");
+            display.show();
         }
         return this;
     }
@@ -915,11 +838,12 @@ State *TrackingState::run()
     float speed = error * 2;
 
     if ( cnt == 0 ) {
-        lcd.setCursor(0,0);
-        lcd.printf("Tracking: %.1f   ", target);
-        lcd.setCursor(0,1);
-        lcd.printf("azimuth %d     ", a);
-
+        display.clear();
+        display.setCursor(0,0);
+        display.printf("Tracking: %.1f   ", target);
+        display.setCursor(0,1);
+        display.printf("azimuth %d     ", a);
+        display.show();
         Serial.printf("azimuth=%d   target=%.1f   error=%.1f  speed: %.1f\n", a, target, error, speed);
     }
     cnt = (cnt+1) % 10;
