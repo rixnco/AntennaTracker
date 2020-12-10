@@ -27,7 +27,7 @@
 
 
 
-class QMC5883LCompass : public Compass {
+class QMC5883LCompass : public BaseCompass {
 	
   public:
     QMC5883LCompass();

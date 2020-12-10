@@ -47,7 +47,6 @@ public:
             _oled.clearDisplay();
             _oled.setTextSize(1,2);             // 1:2 pixel scale
             _oled.setTextColor(SSD1306_WHITE);  // Draw white text
-            _oled.print("Hello");
             _oled.display();
         }
     }

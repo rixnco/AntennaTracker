@@ -28,6 +28,9 @@ Release under the GNU General Public License v3
 Compass::~Compass() {
 }
 
+BaseCompass::~BaseCompass() {
+}
+
 
 
 /**
@@ -37,7 +40,7 @@ Compass::~Compass() {
 	@since v0.1;
 **/
 // Set I2C Address if different then default.
-void Compass::setADDR(byte b){
+void BaseCompass::setADDR(byte b){
 	_ADDR = b;
 }
 
@@ -51,7 +54,7 @@ void Compass::setADDR(byte b){
 	@since v0.1;
 **/
 // Write register values to chip
-void Compass::_writeReg(byte r, byte v){
+void BaseCompass::_writeReg(byte r, byte v){
 	Wire.beginTransmission(_ADDR);
 	Wire.write(r);
 	Wire.write(v);
@@ -60,7 +63,7 @@ void Compass::_writeReg(byte r, byte v){
 
 
 // 1 = Basic 2 = Advanced
-void Compass::setSmoothing(byte steps, bool adv){
+void BaseCompass::setSmoothing(byte steps, bool adv){
 	_smoothUse = true;
 	_smoothSteps = ( steps > 10) ? 10 : steps;
 	_smoothAdvanced = (adv == true) ? true : false;
@@ -74,7 +77,7 @@ void Compass::setSmoothing(byte steps, bool adv){
 	
 	@since v1.1.0
 **/
-void Compass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max){
+void BaseCompass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max){
 	_calibrationUse = true;
 
 	_vCalibration[0][0] = x_min;
@@ -99,7 +102,7 @@ void Compass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_m
 	@since v1.1.0
 	
 **/
-void Compass::_applyCalibration(){
+void BaseCompass::_applyCalibration(){
 	int x_offset = (_vCalibration[0][0] + _vCalibration[0][1])/2;
 	int y_offset = (_vCalibration[1][0] + _vCalibration[1][1])/2;
 	int z_offset = (_vCalibration[2][0] + _vCalibration[2][1])/2;
@@ -137,7 +140,7 @@ void Compass::_applyCalibration(){
 	
 	@since v0.3;
 **/
-void Compass::_smoothing(){
+void BaseCompass::_smoothing(){
 	byte max = 0;
 	byte min = 0;
 	
@@ -178,7 +181,7 @@ void Compass::_smoothing(){
 	@since v0.1;
 	@return int x axis
 **/
-int Compass::getX(){
+int BaseCompass::getX(){
 	return _get(0);
 }
 
@@ -190,7 +193,7 @@ int Compass::getX(){
 	@since v0.1;
 	@return int y axis
 **/
-int Compass::getY(){
+int BaseCompass::getY(){
 	return _get(1);
 }
 
@@ -202,7 +205,7 @@ int Compass::getY(){
 	@since v0.1;
 	@return int z axis
 **/
-int Compass::getZ(){
+int BaseCompass::getZ(){
 	return _get(2);
 }
 
@@ -213,7 +216,7 @@ int Compass::getZ(){
 	@since v1.1.0
 	@return int sensor axis value
 **/
-int Compass::_get(int i){
+int BaseCompass::_get(int i){
 	if ( _smoothUse ) 
 		return _vSmooth[i];
 	
@@ -232,7 +235,7 @@ int Compass::_get(int i){
 	@since v0.1;
 	@return int azimuth
 **/
-int Compass::getAzimuth(){
+int BaseCompass::getAzimuth(){
 	int a = atan2( getY(), getX() ) * 180.0 / PI;
 	return a < 0 ? 360 + a : a;
 }
@@ -248,7 +251,7 @@ int Compass::getAzimuth(){
 	
 	@return byte direction of bearing
 */
-byte Compass::getBearing(int azimuth){
+byte BaseCompass::getBearing(int azimuth){
 	unsigned long a = azimuth / 22.5;
 	unsigned long r = a - (int)a;
 	byte sexdec = 0;	
@@ -281,7 +284,7 @@ byte Compass::getBearing(int azimuth){
 	@since v1.0.1 - function now requires azimuth parameter.
 	@since v0.2.0 - initial creation
 */
-void Compass::getDirection(char* myArray, int azimuth){
+void BaseCompass::getDirection(char* myArray, int azimuth){
 	int d = getBearing(azimuth);
 	myArray[0] = _bearings[d][0];
 	myArray[1] = _bearings[d][1];

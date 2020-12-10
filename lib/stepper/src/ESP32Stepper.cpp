@@ -193,6 +193,14 @@ void ESP32Stepper::move(float speed, float angle)
     if (speed <= 0 ) {
         return;
     }
+
+    uint32_t freq = (uint32_t)(speed * _stepPerRev / 360.f);
+    if(freq==0) {
+        return;
+    }
+
+    _speed = speed;
+
     gpio_set_level((gpio_num_t)_enablePin, 0);
     bool dir= !_reverseDir;
     dir= angle<0?!dir:dir;
@@ -207,8 +215,6 @@ void ESP32Stepper::move(float speed, float angle)
     }
 
     gpio_set_level((gpio_num_t)_dirPin, dir);
-    uint32_t freq = (uint32_t)(speed * _stepPerRev / 360.f);
-    _speed = speed;
     mcpwm_set_frequency(_instance->unit, _instance->timer, freq);
     mcpwm_set_duty_in_us(_instance->unit, _instance->timer, MCPWM_OPR_A, 5);
     mcpwm_set_duty_type(_instance->unit, _instance->timer, MCPWM_OPR_A, MCPWM_DUTY_MODE_0);

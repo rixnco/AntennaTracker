@@ -34,7 +34,7 @@
 
 
 
-class HMC5883LCompass : public Compass {
+class HMC5883LCompass : public BaseCompass {
 	
   public:
     HMC5883LCompass();

@@ -9,6 +9,7 @@
 #include <CRSFDecoder.h>
 #include <ESP32Stepper.h>
 #include <GeoUtils.h>
+#include <Compass.h>
 #include <QMC5883LCompass.h>
 #include <HMC5883LCompass.h>
 #include <FrieshDecoder.h>
@@ -249,7 +250,7 @@ ESP32Stepper        stepper;
 Servo               tiltServo;
 QMC5883LCompass     qmc5883;
 HMC5883LCompass     hmc5883;
-Compass             *compass;
+CompassProxy        compass;
 
 // bool                has_lcd = false;
 // LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
@@ -381,7 +382,7 @@ void setup()
         Serial.println("Found HMC5883");
         hmc5883.init();
         hmc5883.setMode(HMC5883_MODE_CONTINUOUS, HMC5883_ODR_75_HZ, HMC5883_RNG_1_30_GA, HMC5883_OSR_8);
-        compass = &hmc5883;
+        compass.setCompass(&hmc5883);
     }
     else
     {
@@ -390,7 +391,7 @@ void setup()
             Serial.println("Found QMC5883");
             qmc5883.init();
             qmc5883.setMode(QMC5883_MODE_CONTINUOUS, QMC5883_ODR_10_HZ, QMC5883_RNG_2_GA, QMC5883_OSR_64);
-            compass = &qmc5883;
+            compass.setCompass(&qmc5883);
         }
         else
         {
@@ -400,7 +401,7 @@ void setup()
         }
     }
     if(g_settings.compassCalibrated) {
-        compass->setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
+        compass.setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
         Serial.println("Restored compass calibration");
     }
 
@@ -415,33 +416,17 @@ void setup()
         g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);        
     }
 
-//    has_lcd = false;
-//    has_oled = wire_ping(0x3c);
     if(wire_ping(0x3c))
     {
         Serial.println("Configuring OLED Display...");
         display.setDisplay(&oled);
-
-        // if(oled.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-        //     oled.clearDisplay();
-        //     oled.setTextSize(1,2);             // Normal 1:1 pixel scale
-        //     oled.setTextColor(SSD1306_WHITE);        // Draw white text
-        //     oled.setCursor(0,0);             // Start at top-left corner
-        //     oled.print("AntennaTracker");            
-        //     oled.display();
-        // } else {
-        //     has_oled= false;
-        // }
-    } else {
-        // has_lcd = wire_ping(0x39);
-        if(wire_ping(0x39)) {
-            Serial.println("Configuring LCD Display...");
-            display.setDisplay(&lcd);
-            // lcd.begin(16,2);               // initialize the lcd 
-            // lcd.setCursor(0, 0);
-            // lcd.print("AntennaTracker");
-        }
+    } 
+    else if(wire_ping(0x27)) 
+    {
+        Serial.println("Configuring LCD Display...");
+        display.setDisplay(&lcd);
     }
+    display.init();
     display.clear();
     display.setCursor(0,0);
     display.print("AntennaTracker");
@@ -519,6 +504,7 @@ void StartupState::enter()
     ledBlink(g_startup_profile, ARRAY_LEN(g_startup_profile));
 
     display.clear();
+    display.setCursor(0,0);
     display.print("Click to start");
     display.setCursor(0,1);
     display.print("Hold to reset");
@@ -611,7 +597,7 @@ State *CalibrationState::run()
             Serial.print(g_settings.compassMaxY);
             Serial.println(");");
 
-            compass->setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
+            compass.setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
             g_settings.compassCalibrated = true;
             storeSettings();
             return &idleState;
@@ -623,11 +609,11 @@ State *CalibrationState::run()
     if(millis()-_lastMeasureTime < 100) return this;
     _lastMeasureTime = millis();
 
-    compass->read();
+    compass.read();
     bool changed = false;
     // Return XYZ readings
-    float x = compass->getX();
-    float y = compass->getY();
+    float x = compass.getX();
+    float y = compass.getY();
     if (x < g_settings.compassMinX)
     {
         g_settings.compassMinX = x;
@@ -827,10 +813,10 @@ State *TrackingState::run()
         return this;
     }
 
-    compass->read();
+    compass.read();
 
     // Return Azimuth reading
-    int a = compass->getAzimuth();
+    int a = compass.getAzimuth();
     float target = g_homeLocation.azimuthTo(g_gpsTarget);
     while(target<0) target+=360;
     while(target>=360) target-=360;
