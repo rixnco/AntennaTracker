@@ -915,7 +915,7 @@ float getHeadingError(float current_heading, float target_heading)
     }
     else if (rawError > 180.)
     {
-        errorDeg = -rawError + 360;
+        errorDeg = rawError - 360;
         return errorDeg;
     }
     else
