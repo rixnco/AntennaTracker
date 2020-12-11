@@ -19,6 +19,7 @@
 #include "DataLink.h"
 #include "BLEFrskyLink.h"
 #include "StreamLink.h"
+#include "Smoothed.h"
 
 //--------------------------------------
 //              DEFINES
@@ -209,7 +210,7 @@ State*      _lastState = nullptr;;
 //            Prototypes
 //--------------------------------------
 
-int   getAzimuth();
+float   getAzimuth();
 float getHeadingError(float current_heading, float target_heading);
 
 bool wire_ping(uint8_t addr);
@@ -258,6 +259,8 @@ LCD_Display     lcd(0x27);
 OLED_Display    oled(0x3c, 5);
 DisplayProxy    display;
 
+Smoothed <float> ErrorSmoother;
+
 
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
 
@@ -293,7 +296,7 @@ void setup()
 
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
-
+    ErrorSmoother.begin(SMOOTHED_AVERAGE, 10);
     btnInit();
     ledInit();
 
@@ -761,7 +764,7 @@ State *HomeState::run()
         display.setCursor(0,0);
         display.print("Waiting fix...");
         display.setCursor(0,1);
-        display.printf("%3d\xF8", getAzimuth());
+        display.printf("%.1f\xF8", getAzimuth());
         display.show();
     }
     if(!g_gpsFix) {
@@ -809,7 +812,7 @@ void TrackingState::enter()
         display.printf("T: %3d\xF8 %2.2fkm", (int)g_homeLocation.azimuthTo(g_gpsTarget), d);
     }
     display.setCursor(0,1);
-    display.printf("A: %3d\xF8", getAzimuth());    
+    display.printf("A: % 3.1f\xF8", getAzimuth());
     display.show();
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
@@ -830,7 +833,7 @@ State *TrackingState::run()
     _lastProcessTime=now;
     
     float target_d = g_homeLocation.distanceTo(g_gpsTarget);
-    int current_a = getAzimuth();
+    float current_a = getAzimuth();
 
     if(target_d < 20) {
         if(stepper.isMoving()) {
@@ -843,30 +846,31 @@ State *TrackingState::run()
             display.setCursor(0,0);
             display.print("T: ---\xF8 --.--km");
             display.setCursor(0,1);
-            display.printf("A: %3d\xF8", current_a);    
+            display.printf("A: % 3.1f\xF8", current_a);
             display.show();
         }
         return this;
     }
 
    
-    int target_a = g_homeLocation.azimuthTo(g_gpsTarget);
+    float target_a = g_homeLocation.azimuthTo(g_gpsTarget);
     while(target_a<0) target_a+=360;
     while(target_a>=360) target_a-=360;
     float error = getHeadingError(current_a, target_a);
-    float speed = error * 1;
+    ErrorSmoother.add(error);
+    float speed = ErrorSmoother.get() * 1;
 
     if ( now-lastDisplayTime>=200 ) {
         lastDisplayTime = now;
 
         display.clear();
         display.setCursor(0,0);
-        display.printf("T: %3d\xF8 % 2.2fkm", target_a, target_d*0.001);
+        display.printf("T: %3f\xF8 % 2.2fkm", target_a, target_d*0.001);
         display.setCursor(0,1);
-        display.printf("A: %3d\xF8", current_a);    
+        display.printf("A: % 3.1f\xF8", current_a);
         display.show();
 
-        Serial.printf("target_d=%2.2fkm  target_a=%3d°  current_a=%3d° error=%.1f  speed: %.1f\n", target_d, target_a, current_a, error, speed);
+        Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  speed: %.1f\n", target_d, target_a, current_a, error, speed);
     }
 
     float dir = speed >= 0 ? DIR_CW : DIR_CCW;
@@ -895,7 +899,7 @@ bool wire_ping(uint8_t addr)
 }
 
 
-int   getAzimuth() {
+float   getAzimuth() {
     compass.read();
     return compass.getAzimuth();
 }
@@ -906,12 +910,12 @@ float getHeadingError(float current_heading, float target_heading)
     float rawError = target_heading - current_heading;
     if (rawError < -180.)
     {
-        errorDeg = -rawError - 180;
+        errorDeg = rawError + 360;
         return errorDeg;
     }
     else if (rawError > 180.)
     {
-        errorDeg = -rawError + 180;
+        errorDeg = -rawError + 360;
         return errorDeg;
     }
     else
