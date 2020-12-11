@@ -166,7 +166,7 @@ void BaseCompass::_smoothing(){
 					
 			_vSmooth[i] = ( _vTotals[i] - (_vHistory[max][i] + _vHistory[min][i]) ) / (_smoothSteps - 2);
 		} else {
-			_vSmooth[i] = _vTotals[i]  / _smoothSteps;
+			_vSmooth[i] = float(_vTotals[i])  / float(_smoothSteps);
 		}
 	}
 	
@@ -181,7 +181,7 @@ void BaseCompass::_smoothing(){
 	@since v0.1;
 	@return int x axis
 **/
-int BaseCompass::getX(){
+float BaseCompass::getX(){
 	return _get(0);
 }
 
@@ -193,7 +193,7 @@ int BaseCompass::getX(){
 	@since v0.1;
 	@return int y axis
 **/
-int BaseCompass::getY(){
+float BaseCompass::getY(){
 	return _get(1);
 }
 
@@ -205,7 +205,7 @@ int BaseCompass::getY(){
 	@since v0.1;
 	@return int z axis
 **/
-int BaseCompass::getZ(){
+float BaseCompass::getZ(){
 	return _get(2);
 }
 
@@ -216,14 +216,14 @@ int BaseCompass::getZ(){
 	@since v1.1.0
 	@return int sensor axis value
 **/
-int BaseCompass::_get(int i){
+float BaseCompass::_get(int i){
 	if ( _smoothUse ) 
 		return _vSmooth[i];
 	
 	if ( _calibrationUse )
 		return _vCalibrated[i];
 
-	return _vRaw[i];
+	return (float)_vRaw[i];
 }
 
 
@@ -235,8 +235,8 @@ int BaseCompass::_get(int i){
 	@since v0.1;
 	@return int azimuth
 **/
-int BaseCompass::getAzimuth(){
-	int a = atan2( getY(), getX() ) * 180.0 / PI;
+float BaseCompass::getAzimuth(){
+	float a = atan2( getY(), getX() ) * 180.0 / PI;
 	return a < 0 ? 360 + a : a;
 }
 
@@ -251,7 +251,7 @@ int BaseCompass::getAzimuth(){
 	
 	@return byte direction of bearing
 */
-byte BaseCompass::getBearing(int azimuth){
+byte BaseCompass::getBearing(float azimuth){
 	unsigned long a = azimuth / 22.5;
 	unsigned long r = a - (int)a;
 	byte sexdec = 0;	
@@ -284,7 +284,7 @@ byte BaseCompass::getBearing(int azimuth){
 	@since v1.0.1 - function now requires azimuth parameter.
 	@since v0.2.0 - initial creation
 */
-void BaseCompass::getDirection(char* myArray, int azimuth){
+void BaseCompass::getDirection(char* myArray, float azimuth){
 	int d = getBearing(azimuth);
 	myArray[0] = _bearings[d][0];
 	myArray[1] = _bearings[d][1];
