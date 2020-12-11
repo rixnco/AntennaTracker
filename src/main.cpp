@@ -20,8 +20,6 @@
 #include "BLEFrskyLink.h"
 #include "StreamLink.h"
 
-#include "Smoothed.h"
-
 //--------------------------------------
 //              DEFINES
 //--------------------------------------
@@ -211,7 +209,9 @@ State*      _lastState = nullptr;;
 //            Prototypes
 //--------------------------------------
 
+int   getAzimuth();
 float getHeadingError(float current_heading, float target_heading);
+
 bool wire_ping(uint8_t addr);
 
 void storeSettings();
@@ -254,12 +254,6 @@ QMC5883LCompass     qmc5883;
 HMC5883LCompass     hmc5883;
 CompassProxy        compass;
 
-// bool                has_lcd = false;
-// LiquidCrystal_I2C   lcd(PCF8574_ADDR_A21_A11_A01);
-
-// bool                has_oled = false;
-// Adafruit_SSD1306    oled(128, 32, &Wire, 5);
-
 LCD_Display     lcd(0x27);
 OLED_Display    oled(0x3c, 5);
 DisplayProxy    display;
@@ -292,8 +286,6 @@ uint16_t    g_tracking_profile[] = {
 };
 
 
-Smoothed <float> errorDeg_smooth;
-
 
 void setup()
 {
@@ -304,7 +296,6 @@ void setup()
 
     btnInit();
     ledInit();
-    errorDeg_smooth.begin(SMOOTHED_AVERAGE, 10);
 
     if(loadSettings())
     {
@@ -396,7 +387,6 @@ void setup()
             Serial.println("Found QMC5883");
             qmc5883.init();
             qmc5883.setMode(QMC5883_MODE_CONTINUOUS, QMC5883_ODR_10_HZ, QMC5883_RNG_2_GA, QMC5883_OSR_64);
-            qmc5883.setSmoothing(10, false);
             compass.setCompass(&qmc5883);
         }
         else
@@ -435,10 +425,30 @@ void setup()
     display.init();
     display.clear();
     display.setCursor(0,0);
-    display.print("AntennaTracker");
+    display.printf("AntennaTracker");
+    // display.setCursor(0,1);
+    // display.printf("%3d\xF8", getAzimuth());
     display.show();
 
     Serial.println("Started...");
+
+    delay(1000);
+
+    // bool b=false;
+    // for(int t=128; !b && t<255; ++t) {
+    //     display.clear();
+    //     display.setCursor(0,0);
+    //     display.printf("%3d  %c", t, t);
+    //     display.show();
+        
+    //     for(int u=0; !b && u<10; ++u) {
+    //         delay(100);
+    //         b=isButtonPressed();
+    //     }
+    // }
+    // while(true);
+
+
 } // End of setup.
 
 void loop()
@@ -462,6 +472,8 @@ void resetSettings() {
     memset(&g_settings, 0, sizeof(g_settings));
     g_settings.magic   = SETTINGS_MAGIC;
     g_settings.version = SETTINGS_VERSION;
+    compass.clearCalibration();
+    compass.clearSmoothing();
     storeSettings();
 }
 
@@ -737,17 +749,19 @@ void HomeState::enter()
 
 State *HomeState::run() 
 {
+    static uint64_t lastTime =0;
     static bool lastFix= true;
     static GeoPt lastTarget(0,0);
 
     if(!g_connected) return &idleState;
 
-    if(!g_gpsFix && lastFix) {
+    if(!g_gpsFix && ( lastFix || (millis()-lastTime>=200))) {
+        lastTime=millis();
         display.clear();
         display.setCursor(0,0);
-        display.print("Home position");
-        display.setCursor(0,1);
         display.print("Waiting fix...");
+        display.setCursor(0,1);
+        display.printf("%3d\xF8", getAzimuth());
         display.show();
     }
     if(!g_gpsFix) {
@@ -788,7 +802,14 @@ void TrackingState::enter()
     _lastProcessTime = 0;
     display.clear();
     display.setCursor(0,0);
-    display.print("Tracking:");
+    float d = g_homeLocation.distanceTo(g_gpsTarget);
+    if(d<20) {
+        display.print("T: ---\xF8 --.--km");
+    } else {
+        display.printf("T: %3d\xF8 %2.2fkm", (int)g_homeLocation.azimuthTo(g_gpsTarget), d);
+    }
+    display.setCursor(0,1);
+    display.printf("A: %3d\xF8", getAzimuth());    
     display.show();
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
@@ -801,45 +822,52 @@ State *TrackingState::run()
     
     if(!g_gpsFix) return this;
 
-    static int cnt= 0;
+    static uint64_t lastDisplayTime = 0;
+    uint64_t now = millis();
 
-    if(millis() - _lastProcessTime < 100) return this;
-    _lastProcessTime=millis();
+
+    if(now - _lastProcessTime < 100) return this;
+    _lastProcessTime=now;
     
-    if(g_homeLocation.distanceTo(g_gpsTarget)< 20) {
+    float target_d = g_homeLocation.distanceTo(g_gpsTarget);
+    int current_a = getAzimuth();
+
+    if(target_d < 20) {
         if(stepper.isMoving()) {
             stepper.stop();
+            lastDisplayTime = 0;
+        }
+        if(now-lastDisplayTime>=200) {
+            lastDisplayTime = now;
             display.clear();
             display.setCursor(0,0);
-            display.print("Tracking:");
+            display.print("T: ---\xF8 --.--km");
             display.setCursor(0,1);
-            display.print("too close...");
+            display.printf("A: %3d\xF8", current_a);    
             display.show();
         }
         return this;
     }
 
-    compass.read();
+   
+    int target_a = g_homeLocation.azimuthTo(g_gpsTarget);
+    while(target_a<0) target_a+=360;
+    while(target_a>=360) target_a-=360;
+    float error = getHeadingError(current_a, target_a);
+    float speed = error * 1;
 
-    // Return Azimuth reading
-    float a = compass.getAzimuth();
-    float target = g_homeLocation.azimuthTo(g_gpsTarget);
-    while(target<0) target+=360;
-    while(target>=360) target-=360;
-    float error = getHeadingError(a, target);
-    errorDeg_smooth.add(error);
-    float speed = errorDeg_smooth.get() * 0.5;
+    if ( now-lastDisplayTime>=200 ) {
+        lastDisplayTime = now;
 
-    if ( cnt == 0 ) {
         display.clear();
         display.setCursor(0,0);
-        display.printf("Tracking: %.1f   ", target);
+        display.printf("T: %3d\xF8 % 2.2fkm", target_a, target_d*0.001);
         display.setCursor(0,1);
-        display.printf("azimuth %.1f     ", a);
+        display.printf("A: %3d\xF8", current_a);    
         display.show();
-        Serial.printf("azimuth=%.1f   target=%.1f   error=%.1f  speed: %.1f\n", a, target, error, speed);
+
+        Serial.printf("target_d=%2.2fkm  target_a=%3d°  current_a=%3d° error=%.1f  speed: %.1f\n", target_d, target_a, current_a, error, speed);
     }
-    cnt = (cnt+1) % 10;
 
     float dir = speed >= 0 ? DIR_CW : DIR_CCW;
     speed = fabs(speed);
@@ -855,19 +883,9 @@ State *TrackingState::run()
 void TrackingState::exit()
 {
     stepper.stop();
+    display.clear();
+    display.show();
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 bool wire_ping(uint8_t addr)
@@ -876,18 +894,24 @@ bool wire_ping(uint8_t addr)
     return Wire.endTransmission() == 0;
 }
 
+
+int   getAzimuth() {
+    compass.read();
+    return compass.getAzimuth();
+}
+
 float getHeadingError(float current_heading, float target_heading)
 {
     float errorDeg;
     float rawError = target_heading - current_heading;
     if (rawError < -180.)
     {
-        errorDeg = rawError + 360;
+        errorDeg = -rawError - 180;
         return errorDeg;
     }
     else if (rawError > 180.)
     {
-        errorDeg = rawError - 360;
+        errorDeg = -rawError + 180;
         return errorDeg;
     }
     else
@@ -949,7 +973,7 @@ void TelemetryHandler::onCurrentData(TelemetryDecoder *decoder, float current)
 }
 void TelemetryHandler::onHeadingData(TelemetryDecoder *decoder, float heading)
 {
-    // Serial.printf("Heading    : %.2f°\n", heading);
+    // Serial.printf("Heading    : %.2f\xF8\n", heading);
 }
 void TelemetryHandler::onRSSIData(TelemetryDecoder *decoder, int rssi)
 {
@@ -973,11 +997,11 @@ void TelemetryHandler::onDistanceData(TelemetryDecoder *decoder, int distance)
 }
 void TelemetryHandler::onRollData(TelemetryDecoder *decoder, float rollAngle)
 {
-    // Serial.printf("Roll       : %.2f°\n", rollAngle);
+    // Serial.printf("Roll       : %.2f\xF8\n", rollAngle);
 }
 void TelemetryHandler::onPitchData(TelemetryDecoder *decoder, float pitchAngle)
 {
-    // Serial.printf("Pitch      : %.2f°\n", pitchAngle);
+    // Serial.printf("Pitch      : %.2f\xF8\n", pitchAngle);
 }
 void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
 {
