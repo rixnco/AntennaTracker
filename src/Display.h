@@ -44,6 +44,7 @@ public:
     virtual void init() override {
         _initialized = _oled.begin(SSD1306_SWITCHCAPVCC, _addr);
         if(_initialized) {
+            _oled.cp437(true);
             _oled.clearDisplay();
             _oled.setTextSize(1,2);             // 1:2 pixel scale
             _oled.setTextColor(SSD1306_WHITE);  // Draw white text

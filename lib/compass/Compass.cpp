@@ -69,6 +69,17 @@ void BaseCompass::setSmoothing(byte steps, bool adv){
 	_smoothAdvanced = (adv == true) ? true : false;
 }
 
+void BaseCompass:: clearSmoothing() 
+{
+    _smoothUse= false;
+}
+
+void BaseCompass::clearCalibration()
+{
+    _calibrationUse= false;
+}
+
+
 /**
     SET CALIBRATION
 	Set calibration values for more accurate readings
