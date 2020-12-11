@@ -764,7 +764,7 @@ State *HomeState::run()
         display.setCursor(0,0);
         display.print("Waiting fix...");
         display.setCursor(0,1);
-        display.printf("%.1f\xF8", getAzimuth());
+        display.printf("A: %3.1f\xF8", getAzimuth());
         display.show();
     }
     if(!g_gpsFix) {
@@ -809,10 +809,10 @@ void TrackingState::enter()
     if(d<20) {
         display.print("T: ---\xF8 --.--km");
     } else {
-        display.printf("T: %3d\xF8 %2.2fkm", (int)g_homeLocation.azimuthTo(g_gpsTarget), d);
+        display.printf("T: %3.1f\xF8 %2.2fkm", g_homeLocation.azimuthTo(g_gpsTarget), d);
     }
     display.setCursor(0,1);
-    display.printf("A: % 3.1f\xF8", getAzimuth());
+    display.printf("A: %3.1f\xF8", getAzimuth());
     display.show();
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
@@ -846,7 +846,7 @@ State *TrackingState::run()
             display.setCursor(0,0);
             display.print("T: ---\xF8 --.--km");
             display.setCursor(0,1);
-            display.printf("A: % 3.1f\xF8", current_a);
+            display.printf("A: %3.1f\xF8", current_a);
             display.show();
         }
         return this;
@@ -865,9 +865,9 @@ State *TrackingState::run()
 
         display.clear();
         display.setCursor(0,0);
-        display.printf("T: %3f\xF8 % 2.2fkm", target_a, target_d*0.001);
+        display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d*0.001);
         display.setCursor(0,1);
-        display.printf("A: % 3.1f\xF8", current_a);
+        display.printf("A: %3.1f\xF8", current_a);
         display.show();
 
         Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  speed: %.1f\n", target_d, target_a, current_a, error, speed);
