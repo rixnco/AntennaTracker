@@ -20,6 +20,8 @@
 #include "BLEFrskyLink.h"
 #include "StreamLink.h"
 
+#include "Smoothed.h"
+
 //--------------------------------------
 //              DEFINES
 //--------------------------------------
@@ -290,6 +292,8 @@ uint16_t    g_tracking_profile[] = {
 };
 
 
+Smoothed <float> errorDeg_smooth;
+
 
 void setup()
 {
@@ -300,6 +304,7 @@ void setup()
 
     btnInit();
     ledInit();
+    errorDeg_smooth.begin(SMOOTHED_AVERAGE, 10);
 
     if(loadSettings())
     {
@@ -391,6 +396,7 @@ void setup()
             Serial.println("Found QMC5883");
             qmc5883.init();
             qmc5883.setMode(QMC5883_MODE_CONTINUOUS, QMC5883_ODR_10_HZ, QMC5883_RNG_2_GA, QMC5883_OSR_64);
+            qmc5883.setSmoothing(10, false);
             compass.setCompass(&qmc5883);
         }
         else
@@ -816,21 +822,22 @@ State *TrackingState::run()
     compass.read();
 
     // Return Azimuth reading
-    int a = compass.getAzimuth();
+    float a = compass.getAzimuth();
     float target = g_homeLocation.azimuthTo(g_gpsTarget);
     while(target<0) target+=360;
     while(target>=360) target-=360;
     float error = getHeadingError(a, target);
-    float speed = error * 2;
+    errorDeg_smooth.add(error);
+    float speed = errorDeg_smooth.get() * 0.5;
 
     if ( cnt == 0 ) {
         display.clear();
         display.setCursor(0,0);
         display.printf("Tracking: %.1f   ", target);
         display.setCursor(0,1);
-        display.printf("azimuth %d     ", a);
+        display.printf("azimuth %.1f     ", a);
         display.show();
-        Serial.printf("azimuth=%d   target=%.1f   error=%.1f  speed: %.1f\n", a, target, error, speed);
+        Serial.printf("azimuth=%.1f   target=%.1f   error=%.1f  speed: %.1f\n", a, target, error, speed);
     }
     cnt = (cnt+1) % 10;
 
@@ -875,12 +882,12 @@ float getHeadingError(float current_heading, float target_heading)
     float rawError = target_heading - current_heading;
     if (rawError < -180.)
     {
-        errorDeg = -rawError - 180;
+        errorDeg = rawError + 360;
         return errorDeg;
     }
     else if (rawError > 180.)
     {
-        errorDeg = -rawError + 180;
+        errorDeg = rawError - 360;
         return errorDeg;
     }
     else
