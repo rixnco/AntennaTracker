@@ -51,7 +51,7 @@ protected:
 
     bool _checkCRC;
     State _state;
-    uint8_t  _buffer[FRIESH_MAX_FRAME_SIZE];
+    uint8_t  _buffer[FRIESH_MAX_FRAME_SIZE+1];
     uint32_t _index;
     
     uint8_t  _length;

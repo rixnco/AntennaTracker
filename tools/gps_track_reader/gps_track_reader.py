@@ -37,7 +37,7 @@ def main(argv):
     # Send first point for homing the Antenna Tracker
     print("sending homing point")
     # send_gps_fix()
-    send_gps_pt_sp(latitudes[0], longitudes[0], 0, ser)
+    send_gps_pt_sp(latitudes[0], longitudes[0], elevations[0], ser)
     ser.flushOutput()
     input("Ok, press Enter to continue...")
 
@@ -106,7 +106,20 @@ def decodeGPX(inputFilePath):
     return lat_list, lon_list, h_list, h_list, dt_avg
 
 def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
-    print("sending ", latitude, longitude)
+    print("sending ", latitude, longitude, elevation)
+
+    # Send Elevation first !! TODO Check AntennaTracker to make sure order of event is processed correctly
+    message3 = bytearray([0x7E, 0x77, 0x10, 0x20, 0x08])
+    # Now send elevation
+    elevation_= int(elevation * 100)
+    elevation_bytes = elevation_.to_bytes(4, 'little', signed=True)
+    for b in elevation_bytes:
+        message3.append(b & 0xFF)
+    message3.append(0x0)
+    serial_port.write(message3)
+    serial_port.flushOutput()
+
+
     message1 = bytearray([0x7E, 0x77, 0x10, 0x00, 0x08])
     latitude_ = 0x00000000
     longitude_ = 0x80000000
@@ -138,6 +151,10 @@ def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
     message2.append(0x0)
     serial_port.write(message2)
     serial_port.flushOutput()
+
+
+
+
 
 def send_gps_fix():
     global ser

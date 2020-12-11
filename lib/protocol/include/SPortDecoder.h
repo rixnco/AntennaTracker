@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "TelemetryDecoder.h"
 
-#define SPORT_FRAME_SIZE    9
+#define SPORT_FRAME_SIZE   9
 
 class SPortDecoder : public TelemetryDecoder  {
 public:

@@ -318,11 +318,11 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring serial link");
-    serialFrieshDecoder.setCheckCRC(false);
-    serialFrieshDecoder.setFrieshListener(&frieshHandler);
+    // serialFrieshDecoder.setCheckCRC(false);
+    // serialFrieshDecoder.setFrieshListener(&frieshHandler);
     serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
     serialSPortDecoder.setTelemetryListener(&telemetryHandler);
-    serialDataHandler.addDecoder(&serialFrieshDecoder);
+    // serialDataHandler.addDecoder(&serialFrieshDecoder);
     serialDataHandler.addDecoder(&serialCRSFDecoder);
     serialDataHandler.addDecoder(&serialSPortDecoder);
     serialLink.setLinkListener(&serialDataHandler);
@@ -363,8 +363,7 @@ void setup()
             ;
     }
     Serial.println("...OK");
-    tiltServo.write(20);
-
+    tiltServo.write(90);
 
     Wire.begin();
 
@@ -413,6 +412,7 @@ void setup()
     if(g_settings.homed) {
         Serial.println("Restored home location");
         g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);        
+        g_gpsTarget= g_homeLocation;
     }
 
     if(wire_ping(0x3c))
@@ -764,7 +764,7 @@ State *HomeState::run()
         display.setCursor(0,0);
         display.print("Waiting fix...");
         display.setCursor(0,1);
-        display.printf("A: %3.1f\xF8", getAzimuth());
+        display.printf("A:% 3.1f\xF8", getAzimuth());
         display.show();
     }
     if(!g_gpsFix) {
@@ -807,12 +807,12 @@ void TrackingState::enter()
     display.setCursor(0,0);
     float d = g_homeLocation.distanceTo(g_gpsTarget);
     if(d<20) {
-        display.print("T: ---\xF8 --.--km");
+        display.print("T: ---.-\xF8 --.--km");
     } else {
-        display.printf("T: %3.1f\xF8 %2.2fkm", g_homeLocation.azimuthTo(g_gpsTarget), d);
+        display.printf("T:% 3.1f\xF8 %2.2fkm", g_homeLocation.azimuthTo(g_gpsTarget), d);
     }
     display.setCursor(0,1);
-    display.printf("A: %3.1f\xF8", getAzimuth());
+    display.printf("A:% 3.1f\xF8", getAzimuth());
     display.show();
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
@@ -823,13 +823,15 @@ State *TrackingState::run()
     if(!g_settings.homed) return &idleState;
     if(!g_connected) return &idleState;
     
-    if(!g_gpsFix) return this;
+//    if(!g_gpsFix) return this;
 
+    static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
     uint64_t now = millis();
 
 
     if(now - _lastProcessTime < 100) return this;
+
     _lastProcessTime=now;
     
     float target_d = g_homeLocation.distanceTo(g_gpsTarget);
@@ -844,9 +846,9 @@ State *TrackingState::run()
             lastDisplayTime = now;
             display.clear();
             display.setCursor(0,0);
-            display.print("T: ---\xF8 --.--km");
+            display.print("T: ---.-\xF8 --.--km");
             display.setCursor(0,1);
-            display.printf("A: %3.1f\xF8", current_a);
+            display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
             display.show();
         }
         return this;
@@ -860,17 +862,19 @@ State *TrackingState::run()
     ErrorSmoother.add(error);
     float speed = ErrorSmoother.get() * 1;
 
+    float tilt = g_homeLocation.tiltTo(g_gpsTarget);
+    if(tilt<0) tilt = 0;
+
     if ( now-lastDisplayTime>=200 ) {
-        lastDisplayTime = now;
 
         display.clear();
         display.setCursor(0,0);
         display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d*0.001);
         display.setCursor(0,1);
-        display.printf("A: %3.1f\xF8", current_a);
+        display.printf("A: %3.1f\xF8 %2.1f\xF8", current_a, tilt);
         display.show();
 
-        Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  speed: %.1f\n", target_d, target_a, current_a, error, speed);
+        lastDisplayTime = now;
     }
 
     float dir = speed >= 0 ? DIR_CW : DIR_CCW;
@@ -880,6 +884,15 @@ State *TrackingState::run()
         speed = 90;
     }
     stepper.move(speed, dir);
+
+    if(tilt >=0 ) tiltServo.write(90+tilt);
+
+    if( now - lastDebugTime > 1000)
+    {
+        lastDebugTime= now;
+        Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  tilt: %.1f\n", target_d, target_a, current_a, error, tilt);
+    }
+
 
     return this;
 }
@@ -926,25 +939,28 @@ float getHeadingError(float current_heading, float target_heading)
 
 // TELEMETRY HANDLING
 
+float g_GAlt;
+
 void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     g_gpsFix   = true;
-    g_gpsTarget= GeoPt(latitude, longitude);
-    Serial.printf("GPS        : %lf, %lf\n", latitude, longitude);
+    g_gpsTarget= GeoPt(latitude, longitude, g_GAlt);
+    Serial.printf("GPS        : %.4f, %.4f, %.1f\n", latitude, longitude, g_GAlt);
 }
 void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
     g_gpsFix = gpsFix;
     g_gpsSatellites = satellites;
-    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
+//    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
 }
 void TelemetryHandler::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
-    Serial.printf("GAlt       : %.2fm\n", altitude);
+    g_GAlt = altitude;
+//    Serial.printf("GAlt       : %.2fm\n", altitude);
 }
 void TelemetryHandler::onGSpeedData(TelemetryDecoder *decoder, float speed)
 {
-    Serial.printf("GSpeed     : %.2fm/s\n", speed);
+//    Serial.printf("GSpeed     : %.2fm/s\n", speed);
 }
 
 
@@ -957,7 +973,7 @@ void TelemetryHandler::onFrameDecoded(TelemetryDecoder *decoder, uint32_t id)
 }
 void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
 {
-//    Serial.printf("Frame error: %d - 0x%X\n", error, param);
+    Serial.printf("Frame error: %d - 0x%X\n", error, param);
 }
 void TelemetryHandler::onFuelData(TelemetryDecoder *decoder, int fuel)
 {
