@@ -4,6 +4,21 @@
 #include <Arduino.h>
 #include <stdint.h>
 
+#ifdef SAMBI
+#define BTN_PIN                 4
+#define LED1_PIN                2
+
+#define SERVO_PIN               25
+#define STEPPER_DIR_PIN         27
+#define STEPPER_STEP_PIN        26
+#define STEPPER_ENA_PIN         14
+
+#define SERVO_ZERO_OFFSET       90
+#define SERVO_DIRECTION         1       // or -1
+#define SERVO_MIN               -30
+#define SERVO_MAX               90
+
+#else
 
 #define BTN_PIN                 4
 #define LED1_PIN                2
@@ -12,8 +27,15 @@
 #define STEPPER_DIR_PIN         26
 #define STEPPER_STEP_PIN        27
 #define STEPPER_ENA_PIN         14
-#define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
+#define SERVO_ZERO_OFFSET       50
+#define SERVO_DIRECTION         1   // or -1
+#define SERVO_MIN               0   //-30
+#define SERVO_MAX               90
+#endif
+
+
+#define STEPPER_STEP_PER_REV    (32 * 64 * 8)
 
 
 // BUTTON Stuff

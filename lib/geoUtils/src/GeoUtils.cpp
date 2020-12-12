@@ -89,12 +89,12 @@ float GeoPt::tiltTo(const GeoPt& target) const {
 
     float distance = distanceTo(target);
 
-    if(distance > 1.f) {
+//    if(distance > 0.f) {
         float tilt = atan2(target._elev-_elev, distance);
         return TO_DEGF(tilt);
-    } else {
-        return 90.;
-    }
+    // } else {
+    //     return 90.;
+    // }
 }
 
 

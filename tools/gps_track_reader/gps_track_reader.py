@@ -37,7 +37,7 @@ def main(argv):
     # Send first point for homing the Antenna Tracker
     print("sending homing point")
     # send_gps_fix()
-    send_gps_pt_sp(latitudes[0], longitudes[0], elevations[0], ser)
+    send_gps_pt_sp(0, latitudes[0], longitudes[0], elevations[0], ser)
     ser.flushOutput()
     input("Ok, press Enter to continue...")
 
@@ -56,11 +56,11 @@ def main(argv):
     plt.show()
 
     t0 = time.process_time()
-    for i in range(len(latitudes)):
+    for i in range(1,int(len(latitudes))):
         while time.process_time() - t0 < dTSec:
             pass
         t0 = time.process_time()
-        send_gps_pt_sp(latitudes[i], longitudes[i], elevations[i], ser)
+        send_gps_pt_sp(i, latitudes[i], longitudes[i], elevations[i], ser)
         targetPlot.set_xdata(longitudes[i])
         targetPlot.set_ydata(latitudes[i])
         plt.pause(0.00001)
@@ -105,8 +105,7 @@ def decodeGPX(inputFilePath):
     dt_avg = (time_list[-1]/n_track)
     return lat_list, lon_list, h_list, h_list, dt_avg
 
-def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
-    print("sending ", latitude, longitude, elevation)
+def send_gps_pt_sp(idx, latitude, longitude, elevation, serial_port):
 
     # Send Elevation first !! TODO Check AntennaTracker to make sure order of event is processed correctly
     message3 = bytearray([0x7E, 0x77, 0x10, 0x20, 0x08])
@@ -114,6 +113,9 @@ def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
     elevation_= int(elevation * 100)
     elevation_bytes = elevation_.to_bytes(4, 'little', signed=True)
     for b in elevation_bytes:
+        if b == 0x7D or b == 0x7E:
+            message3.append(0x7D)
+            b= b ^ 0x20
         message3.append(b & 0xFF)
     message3.append(0x0)
     serial_port.write(message3)
@@ -132,6 +134,9 @@ def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
     latitude_ += temp
     latitude_bytes = latitude_.to_bytes(4, 'little', signed=False)
     for b in latitude_bytes:
+        if b == 0x7D or b == 0x7E:
+            message1.append(0x7D)
+            b= b ^ 0x20
         message1.append(b & 0xFF)
     message1.append(0x0)
     serial_port.write(message1)
@@ -147,11 +152,17 @@ def send_gps_pt_sp(latitude, longitude, elevation, serial_port):
     longitude_ += temp
     longitude_bytes = longitude_.to_bytes(4, 'little', signed=False)
     for b in longitude_bytes:
+        if b == 0x7D or b == 0x7E:
+            message2.append(0x7D)
+            b= b ^ 0x20
         message2.append(b & 0xFF)
     message2.append(0x0)
     serial_port.write(message2)
     serial_port.flushOutput()
 
+    message = message3 + message1 + message2
+    hex = " 0x".join("{:02X}".format(c) for c in message)
+    print("[{:05d}] ({: 3.4f},{: 2.4f},{: 4.1f})  0x{}".format(idx, latitude, longitude, elevation, hex))
 
 
 

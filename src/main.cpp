@@ -318,11 +318,11 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring serial link");
-    // serialFrieshDecoder.setCheckCRC(false);
-    // serialFrieshDecoder.setFrieshListener(&frieshHandler);
+    serialFrieshDecoder.setCheckCRC(false);
+    serialFrieshDecoder.setFrieshListener(&frieshHandler);
     serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
     serialSPortDecoder.setTelemetryListener(&telemetryHandler);
-    // serialDataHandler.addDecoder(&serialFrieshDecoder);
+    serialDataHandler.addDecoder(&serialFrieshDecoder);
     serialDataHandler.addDecoder(&serialCRSFDecoder);
     serialDataHandler.addDecoder(&serialSPortDecoder);
     serialLink.setLinkListener(&serialDataHandler);
@@ -363,7 +363,12 @@ void setup()
             ;
     }
     Serial.println("...OK");
-    tiltServo.write(90);
+
+    // tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*SERVO_MAX));
+    // while(!isButtonPressed()) {}
+    // while(isButtonPressed()) {}
+    tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*0));
+
 
     Wire.begin();
 
@@ -885,7 +890,10 @@ State *TrackingState::run()
     }
     stepper.move(speed, dir);
 
-    if(tilt >=0 ) tiltServo.write(90+tilt);
+    if(tilt < SERVO_MIN) tilt= SERVO_MIN;
+    if(tilt > SERVO_MAX) tilt= SERVO_MAX;
+    
+    tiltServo.write(SERVO_ZERO_OFFSET+(SERVO_DIRECTION*tilt));
 
     if( now - lastDebugTime > 1000)
     {
@@ -940,12 +948,12 @@ float getHeadingError(float current_heading, float target_heading)
 // TELEMETRY HANDLING
 
 float g_GAlt;
-
+uint32_t tlm_dbg_idx= 0;
 void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     g_gpsFix   = true;
     g_gpsTarget= GeoPt(latitude, longitude, g_GAlt);
-    Serial.printf("GPS        : %.4f, %.4f, %.1f\n", latitude, longitude, g_GAlt);
+    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, g_GAlt);
 }
 void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
@@ -973,7 +981,7 @@ void TelemetryHandler::onFrameDecoded(TelemetryDecoder *decoder, uint32_t id)
 }
 void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
 {
-    Serial.printf("Frame error: %d - 0x%X\n", error, param);
+    Serial.printf("[%s] Frame error: %d - 0x%X\n", decoder->getName().c_str(), error, param);
 }
 void TelemetryHandler::onFuelData(TelemetryDecoder *decoder, int fuel)
 {

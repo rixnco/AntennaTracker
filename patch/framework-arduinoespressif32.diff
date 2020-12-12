@@ -1,6 +1,6 @@
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLEClient.cpp framework-arduinoespressif32_rix/libraries/BLE/src/BLEClient.cpp
---- framework-arduinoespressif32/libraries/BLE/src/BLEClient.cpp	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLEClient.cpp	2020-01-16 23:10:13.549001900 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLEClient.cpp	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLEClient.cpp	2020-12-01 16:25:46 +0000
 @@ -20,7 +20,7 @@
  #include "BLEDevice.h"
  #include "esp32-hal-log.h"
@@ -37,8 +37,8 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLEClient.cpp framewor
  		} // ESP_GATTC_DISCONNECT_EVT
  
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.cpp framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.cpp
---- framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.cpp	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.cpp	2020-01-18 22:28:18.523233300 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.cpp	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.cpp	2020-12-01 16:25:46 +0000
 @@ -20,7 +20,6 @@
  #include "BLERemoteDescriptor.h"
  #include "esp32-hal-log.h"
@@ -110,8 +110,8 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristi
  		log_e("esp_ble_gattc_write_char: rc=%d %s", errRc, GeneralUtils::errorToString(errRc));
  		return;
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.h framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.h
---- framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.h	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.h	2020-01-15 23:01:26.315437700 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristic.h	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteCharacteristic.h	2020-12-01 16:25:46 +0000
 @@ -21,7 +21,7 @@
  
  class BLERemoteService;
@@ -139,8 +139,8 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteCharacteristi
  	// We maintain a map of descriptors owned by this characteristic keyed by a string representation of the UUID.
  	std::map<std::string, BLERemoteDescriptor*> m_descriptorMap;
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.cpp framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.cpp
---- framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.cpp	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.cpp	2020-01-15 18:28:29.463108800 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.cpp	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.cpp	2020-12-01 16:25:46 +0000
 @@ -21,6 +21,65 @@
  	m_pRemoteCharacteristic = pRemoteCharacteristic;
  }
@@ -227,8 +227,8 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.cp
  } // writeValue
  
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.h framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.h
---- framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.h	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.h	2020-01-15 18:28:41.328320900 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.h	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteDescriptor.h	2020-12-01 16:25:46 +0000
 @@ -43,11 +43,14 @@
  		BLEUUID                  uuid,
  		BLERemoteCharacteristic* pRemoteCharacteristic
@@ -245,8 +245,17 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteDescriptor.h 
  
  };
 diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteService.cpp framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteService.cpp
---- framework-arduinoespressif32/libraries/BLE/src/BLERemoteService.cpp	2019-10-02 11:52:48.000000000 +0200
-+++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteService.cpp	2020-01-16 16:33:25.698260600 +0100
+--- framework-arduinoespressif32/libraries/BLE/src/BLERemoteService.cpp	2019-10-02 09:52:48 +0000
++++ framework-arduinoespressif32_rix/libraries/BLE/src/BLERemoteService.cpp	2020-12-12 11:03:18 +0000
+@@ -244,7 +244,7 @@
+  * @brief This function is designed to get characteristics map when we have multiple characteristics with the same UUID
+  */
+ void BLERemoteService::getCharacteristics(std::map<uint16_t, BLERemoteCharacteristic*>* pCharacteristicMap) {
+-	pCharacteristicMap = &m_characteristicMapByHandle;
++	*pCharacteristicMap = m_characteristicMapByHandle;
+ }  // Get the characteristics map.
+ 
+ /**
 @@ -302,10 +302,10 @@
   * @return N/A.
   */
@@ -262,4 +271,3 @@ diff -Naur framework-arduinoespressif32/libraries/BLE/src/BLERemoteService.cpp f
  	m_characteristicMap.clear();   // Clear the map
  	for (auto &myPair : m_characteristicMapByHandle) {
  	   delete myPair.second;
-\ No newline at end of file
