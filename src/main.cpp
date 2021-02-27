@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 
 
@@ -12,6 +13,7 @@
 #include <Compass.h>
 #include <QMC5883LCompass.h>
 #include <HMC5883LCompass.h>
+#include <FakeCompass.h>
 #include <FrieshDecoder.h>
 
 #include "bsp.h"
@@ -20,6 +22,8 @@
 #include "BLEFrskyLink.h"
 #include "StreamLink.h"
 #include "Smoothed.h"
+
+#include "AS5600.h"
 
 //--------------------------------------
 //              DEFINES
@@ -38,10 +42,10 @@ typedef struct {
     uint32_t    magic;
     uint32_t    version;
     bool        compassCalibrated;
-    int32_t     compassMinX; 
-    int32_t     compassMaxX; 
-    int32_t     compassMinY; 
-    int32_t     compassMaxY; 
+    int32_t     compassMinX;
+    int32_t     compassMaxX;
+    int32_t     compassMinY;
+    int32_t     compassMaxY;
     uint64_t    bleRemoteAddress;
     bool        homed;
     float       homeLattitude;
@@ -253,6 +257,7 @@ ESP32Stepper        stepper;
 Servo               tiltServo;
 QMC5883LCompass     qmc5883;
 HMC5883LCompass     hmc5883;
+FakeCompass         fakeCompass;
 CompassProxy        compass;
 
 LCD_Display     lcd(0x27);
@@ -260,6 +265,8 @@ OLED_Display    oled(0x3c, 5);
 DisplayProxy    display;
 
 Smoothed <float> ErrorSmoother;
+
+AS5600 RotaryEncoder = AS5600();
 
 
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
@@ -299,7 +306,8 @@ void setup()
     ErrorSmoother.begin(SMOOTHED_AVERAGE, 10);
     btnInit();
     ledInit();
-
+    Wire.begin();
+    RotaryEncoder.init();
     if(loadSettings())
     {
         Serial.println("settings restored...");
@@ -369,9 +377,6 @@ void setup()
     // while(isButtonPressed()) {}
     tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*0));
 
-
-    Wire.begin();
-
     // Scan I2C bus
     Serial.println("Scaning I2C bus...");
     for(int t=1; t<127; ++t) {
@@ -399,8 +404,9 @@ void setup()
         else
         {
             Serial.println("Initializing Compass...FAIL");
-            while (true)
-                ;
+            compass.setCompass(&fakeCompass);
+//            while (true)
+//                ;
         }
     }
     if(g_settings.compassCalibrated) {
@@ -416,7 +422,7 @@ void setup()
 
     if(g_settings.homed) {
         Serial.println("Restored home location");
-        g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);        
+        g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
         g_gpsTarget= g_homeLocation;
     }
 
@@ -512,7 +518,7 @@ bool loadSettings() {
         }
     }
     resetSettings();
-    
+
     return false;
 }
 
@@ -525,7 +531,7 @@ void StartupState::enter()
 
     resetButtonPressTime();
     _pressed    = false;
-    _long_press = false;    
+    _long_press = false;
 
     ledBlink(g_startup_profile, ARRAY_LEN(g_startup_profile));
 
@@ -545,7 +551,7 @@ State *StartupState::run()
     lastTime= millis();
 
 
-    if(!isButtonPressed()) 
+    if(!isButtonPressed())
     {
         if(_long_press) {
             resetSettings();
@@ -593,7 +599,7 @@ void CalibrationState::enter()
     g_settings.compassMaxY = -999999;
 
     _loops = 2;
-    _speed = 45;
+    _speed = 15;
     _angle = -390;
     _lastMeasureTime = 0;
 
@@ -609,7 +615,7 @@ void CalibrationState::enter()
 State *CalibrationState::run()
 {
     if(!stepper.isMoving()) {
-        if(_loops==0) 
+        if(_loops==0)
         {
             // Now we have finish spinning
             Serial.println("Done");
@@ -695,7 +701,7 @@ State *ConnectionState::run()
         Serial.println("ConnectionState::run -> connected...");
         return &idleState;
     }
-    if(g_remoteAddress!=0) 
+    if(g_remoteAddress!=0)
     {
         BLEDevice::getScan()->stop();
 
@@ -703,7 +709,7 @@ State *ConnectionState::run()
         display.setCursor(0,0);
         display.print("Connecting");
         display.setCursor(0,1);
-        display.printf("> %02X%02X%02X%02X%02X%02X", 
+        display.printf("> %02X%02X%02X%02X%02X%02X",
             (uint8_t)(g_remoteAddress>>40),
             (uint8_t)(g_remoteAddress>>32),
             (uint8_t)(g_remoteAddress>>24),
@@ -712,15 +718,15 @@ State *ConnectionState::run()
             (uint8_t)(g_remoteAddress    ));
         display.show();
 
-        Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n", 
+        Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
             (uint8_t)(g_remoteAddress>>40),
             (uint8_t)(g_remoteAddress>>32),
             (uint8_t)(g_remoteAddress>>24),
             (uint8_t)(g_remoteAddress>>16),
             (uint8_t)(g_remoteAddress>> 8),
             (uint8_t)(g_remoteAddress    ));
-        
-        
+
+
         if(bleLink.connect(g_remoteAddress)) {
             g_connected = true;
             Serial.println("Connection...OK");
@@ -742,7 +748,7 @@ void ConnectionState::exit() {
     BLEDevice::getScan()->stop();
 }
 
-void HomeState::enter() 
+void HomeState::enter()
 {
     Serial.println("HomeState::enter");
     display.clear();
@@ -755,7 +761,7 @@ void HomeState::enter()
     ledBlink(g_fix_profile, ARRAY_LEN(g_fix_profile));
 }
 
-State *HomeState::run() 
+State *HomeState::run()
 {
     static uint64_t lastTime =0;
     static bool lastFix= true;
@@ -775,7 +781,7 @@ State *HomeState::run()
     if(!g_gpsFix) {
         lastFix = g_gpsFix;
         return this;
-    } 
+    }
 
     // We have a fix !!!
     ledState(LED_ON);
@@ -790,7 +796,7 @@ State *HomeState::run()
         display.show();
     }
 
-    if(isButtonPressed()) 
+    if(isButtonPressed())
     {
         g_homeLocation= g_gpsTarget;
         g_settings.homed= true;
@@ -804,7 +810,7 @@ State *HomeState::run()
 }
 
 
-void TrackingState::enter() 
+void TrackingState::enter()
 {
     Serial.println("TrackingState::enter");
     _lastProcessTime = 0;
@@ -822,12 +828,12 @@ void TrackingState::enter()
     ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
 }
 
-State *TrackingState::run() 
+State *TrackingState::run()
 {
     if(!g_settings.compassCalibrated) return &idleState;
     if(!g_settings.homed) return &idleState;
     if(!g_connected) return &idleState;
-    
+
 //    if(!g_gpsFix) return this;
 
     static uint64_t lastDebugTime = 0;
@@ -838,7 +844,7 @@ State *TrackingState::run()
     if(now - _lastProcessTime < 100) return this;
 
     _lastProcessTime=now;
-    
+
     float target_d = g_homeLocation.distanceTo(g_gpsTarget);
     float current_a = getAzimuth();
 
@@ -859,7 +865,7 @@ State *TrackingState::run()
         return this;
     }
 
-   
+
     float target_a = g_homeLocation.azimuthTo(g_gpsTarget);
     while(target_a<0) target_a+=360;
     while(target_a>=360) target_a-=360;
@@ -892,7 +898,7 @@ State *TrackingState::run()
 
     if(tilt < SERVO_MIN) tilt= SERVO_MIN;
     if(tilt > SERVO_MAX) tilt= SERVO_MAX;
-    
+
     tiltServo.write(SERVO_ZERO_OFFSET+(SERVO_DIRECTION*tilt));
 
     if( now - lastDebugTime > 1000)
@@ -920,9 +926,14 @@ bool wire_ping(uint8_t addr)
 }
 
 
-float   getAzimuth() {
-    compass.read();
-    return compass.getAzimuth();
+//float getAzimuth() {
+//    compass.read();
+//    return compass.getAzimuth();
+//}
+
+float getAzimuth() {
+    RotaryEncoder.read();
+    return RotaryEncoder.getAngleDegrees();
 }
 
 float getHeadingError(float current_heading, float target_heading)
@@ -1069,7 +1080,7 @@ void FrieshHandler::onStopTracking(FrieshDecoder *decoder)
 BLEDataHandler::BLEDataHandler() : DataHandler() {}
 BLEDataHandler::BLEDataHandler(size_t size) : DataHandler(size) {}
 
-void BLEDataHandler::onLinkConnected(DataLink* link) 
+void BLEDataHandler::onLinkConnected(DataLink* link)
 {
 }
 
@@ -1082,9 +1093,11 @@ void BLEDataHandler::onLinkDisconnected(DataLink* link)
 
 /// BLE
 
+
 /**
  * Called for each advertising BLE server.
  */
+
 void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
 {
     Serial.print("BLE Advertised Device: ");
@@ -1099,10 +1112,3 @@ void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
         g_remoteAddress= addr;
     }
 }
-
-
-
-
-
-
-
