@@ -10,10 +10,6 @@
 #include <CRSFDecoder.h>
 #include <ESP32Stepper.h>
 #include <GeoUtils.h>
-#include <Compass.h>
-#include <QMC5883LCompass.h>
-#include <HMC5883LCompass.h>
-#include <FakeCompass.h>
 #include <FrieshDecoder.h>
 
 #include "bsp.h"
@@ -255,10 +251,6 @@ FrieshHandler       frieshHandler;
 
 ESP32Stepper        stepper;
 Servo               tiltServo;
-QMC5883LCompass     qmc5883;
-HMC5883LCompass     hmc5883;
-FakeCompass         fakeCompass;
-CompassProxy        compass;
 
 LCD_Display     lcd(0x27);
 OLED_Display    oled(0x3c, 5);
@@ -303,7 +295,7 @@ void setup()
 
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
-    ErrorSmoother.begin(SMOOTHED_AVERAGE, 10);
+    ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
     btnInit();
     ledInit();
     Wire.begin();
@@ -384,36 +376,7 @@ void setup()
     }
 
     Serial.println("Checking compass...");
-
-    if (wire_ping(0x1E))
-    {
-        Serial.println("Found HMC5883");
-        hmc5883.init();
-        hmc5883.setMode(HMC5883_MODE_CONTINUOUS, HMC5883_ODR_75_HZ, HMC5883_RNG_1_30_GA, HMC5883_OSR_8);
-        compass.setCompass(&hmc5883);
-    }
-    else
-    {
-        if (wire_ping(0x0D))
-        {
-            Serial.println("Found QMC5883");
-            qmc5883.init();
-            qmc5883.setMode(QMC5883_MODE_CONTINUOUS, QMC5883_ODR_10_HZ, QMC5883_RNG_2_GA, QMC5883_OSR_64);
-            compass.setCompass(&qmc5883);
-        }
-        else
-        {
-            Serial.println("Initializing Compass...FAIL");
-            compass.setCompass(&fakeCompass);
-//            while (true)
-//                ;
-        }
-    }
-    if(g_settings.compassCalibrated) {
-        compass.setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
-        Serial.println("Restored compass calibration");
-    }
-
+    // TODO : check AS5600 is ok & restore calibration
     Serial.println("Initializing Compass...OK");
 
     if(g_settings.bleRemoteAddress!=0) {
@@ -486,8 +449,6 @@ void resetSettings() {
     memset(&g_settings, 0, sizeof(g_settings));
     g_settings.magic   = SETTINGS_MAGIC;
     g_settings.version = SETTINGS_VERSION;
-    compass.clearCalibration();
-    compass.clearSmoothing();
     storeSettings();
 }
 
@@ -614,67 +575,9 @@ void CalibrationState::enter()
 
 State *CalibrationState::run()
 {
-    if(!stepper.isMoving()) {
-        if(_loops==0)
-        {
-            // Now we have finish spinning
-            Serial.println("Done");
-            Serial.print("compass.setCalibration(");
-            Serial.print(g_settings.compassMinX);
-            Serial.print(", ");
-            Serial.print(g_settings.compassMaxX);
-            Serial.print(", ");
-            Serial.print(g_settings.compassMinY);
-            Serial.print(", ");
-            Serial.print(g_settings.compassMaxY);
-            Serial.println(");");
-
-            compass.setCalibration(g_settings.compassMinX, g_settings.compassMaxX, g_settings.compassMinY, g_settings.compassMaxY, -2000, 2000);
-            g_settings.compassCalibrated = true;
-            storeSettings();
-            return &idleState;
-        }
-        --_loops;
-        _angle = -_angle;
-        stepper.move(_speed, _angle);
-    }
-    if(millis()-_lastMeasureTime < 100) return this;
-    _lastMeasureTime = millis();
-
-    compass.read();
-    bool changed = false;
-    // Return XYZ readings
-    float x = compass.getX();
-    float y = compass.getY();
-    if (x < g_settings.compassMinX)
-    {
-        g_settings.compassMinX = x;
-        changed = true;
-    }
-    if (x > g_settings.compassMaxX)
-    {
-        g_settings.compassMaxX = x;
-        changed = true;
-    }
-
-    if (y < g_settings.compassMinY)
-    {
-        g_settings.compassMinY = y;
-        changed = true;
-    }
-    if (y > g_settings.compassMaxY)
-    {
-        g_settings.compassMaxY = y;
-        changed = true;
-    }
-
-    if (changed)
-    {
-        Serial.println("CALIBRATING...");
-    }
-
-    return this;
-
+    g_settings.compassCalibrated = true;
+    storeSettings();
+    return &idleState;
 }
 
 
@@ -871,7 +774,7 @@ State *TrackingState::run()
     while(target_a>=360) target_a-=360;
     float error = getHeadingError(current_a, target_a);
     ErrorSmoother.add(error);
-    float speed = ErrorSmoother.get() * 1;
+    float speed = ErrorSmoother.get() * 0.1;
 
     float tilt = g_homeLocation.tiltTo(g_gpsTarget);
     if(tilt<0) tilt = 0;

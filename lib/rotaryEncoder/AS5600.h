@@ -34,7 +34,7 @@ class AS5600 : public RotaryEncoder {
         AS5600();
         void init() override;
         void read() override;
-        uint16_t getRawAngle() override;
+        uint16_t getRawAngle();
         float getAngleDegrees() override;
         byte getStatus() const;
 
