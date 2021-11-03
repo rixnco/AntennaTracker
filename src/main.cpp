@@ -4,6 +4,7 @@
 
 #include <EEPROM.h>
 #include <BLEDevice.h>
+#include <BLE2902.h>
 #include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
@@ -224,6 +225,22 @@ bool loadSettings();
 //            Variables
 //--------------------------------------
 
+#define FRIESH_SERVICE_UUID        "b5800000-6d90-448a-8252-42685e648239"
+#define FRIESH_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
+#define FRIESH_BUFFER_SIZE          100
+
+#define FRIESH_PARAM_REQ            '$'
+
+
+static BLEServer* pServer = NULL;
+static BLECharacteristic* pCharacteristic = NULL;
+static bool deviceConnected = false;
+static bool oldDeviceConnected = false;
+static char    frieshBuffer[FRIESH_BUFFER_SIZE];
+static uint8_t frieshIdx;
+
+
+
 settings_t g_settings;
 
 uint64_t g_remoteAddress = 0x0000000000000000;
@@ -288,6 +305,113 @@ uint16_t    g_tracking_profile[] = {
 };
 
 
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+      Serial.println("FrieshClient connected...");
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+      Serial.println("FrieshClient disconnected...");
+    }
+};
+
+
+void sendAck() 
+{
+  pCharacteristic->setValue(">OK\n");
+}
+
+void sendError(const char* msg)
+{
+  // TODO add msg 
+  pCharacteristic->setValue(">ERROR");
+}
+
+bool processFrieshParamRequest() 
+{
+  char* ptr= &frieshBuffer[1];
+
+  switch(*ptr) {
+   case '$':
+    ++ptr;
+    if(*ptr==0) sendSettings();
+    return true;
+    break;
+   case '<':
+    // Store settings.
+    noInterrupts();
+    write_settings();
+    interrupts();
+    Serial.println(">SETTINGS,stored");
+    return true;
+    break;
+   case '>':
+    // restore settings
+    bool b;
+    noInterrupts();
+    if(!(b=read_settings())) {
+      default_settings();
+      write_settings();
+    }
+    interrupts();
+    if(b) Serial.println(">SETTINGS,restored");
+    else Serial.println(">SETTINGS,default");
+    return true;
+    break;
+  default:
+    int p= getParamID(ptr, &ptr);
+    if(p==-1) return false;
+    if(*ptr==0) {
+      sendParam(p);
+    } else if(*ptr=='=') {
+      ++ptr;
+      if(*ptr==0 || !setParam(p, ptr)) return false;
+      return true;
+    }  
+  }  
+  return false;
+}
+
+
+void processFrieshCommand()
+{
+    switch(frieshBuffer[0]) {
+      case FRIESH_PARAM_REQ:
+        if(!processFrieshParamRequest()) sendError("Invalid parameter command");
+        else sendAck();  
+        break;
+    }
+
+
+}
+
+
+class MyBLECharacteristicCallbacks: public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    std::string value = pCharacteristic->getValue();
+
+    for(int t =0; t< value.length(); ++t) 
+    {
+      if(frieshIdx<FRIESH_BUFFER_SIZE) {
+        uint8_t c = value[t];
+        if(t=='\n')
+        {
+          frieshBuffer[frieshIdx++]= 0;
+          processFrieshCommand();
+
+        }
+        else 
+        {
+           if(c!='\r' && c!=' ' && c!='\t' ) frieshBuffer[frieshIdx++]= c;
+        }
+      }
+    }
+
+  }
+};
+
 
 void setup()
 {
@@ -332,6 +456,48 @@ void setup()
 
     Serial.print("Configuring BLE scanner");
     BLEDevice::init("");
+
+
+    // Create the BLE Server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    // Create the BLE Service
+    BLEService *pService = pServer->createService(FRIESH_SERVICE_UUID);
+
+    // Create a BLE Characteristic
+    pCharacteristic = pService->createCharacteristic(
+                        FRIESH_CHARACTERISTIC_UUID,
+                        BLECharacteristic::PROPERTY_READ    |
+                        BLECharacteristic::PROPERTY_WRITE   |
+                        BLECharacteristic::PROPERTY_NOTIFY  |
+                        BLECharacteristic::PROPERTY_INDICATE
+                      );
+
+    // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
+    // Create a BLE Descriptor
+    pCharacteristic->addDescriptor(new BLE2902());
+
+
+    pCharacteristic->setCallbacks(new MyBLECharacteristicCallbacks());
+
+    // Start the service
+    pService->start();
+
+
+  // Start advertising
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
+  Serial.println("Waiting a client connection to notify...");
+
+
+
+
+
+
 
     // Retrieve a Scanner and set the callback we want to use to be informed when we
     // have detected a new device.  Specify that we want active scanning and start the
@@ -430,6 +596,25 @@ void setup()
 
 void loop()
 {
+    // disconnecting
+    if (!deviceConnected && oldDeviceConnected) {
+        delay(500); // give the bluetooth stack the chance to get things ready
+        Serial.println("start advertising");
+        oldDeviceConnected = deviceConnected;
+        pServer->startAdvertising(); // restart advertising
+    }
+    // connecting
+    if (deviceConnected && !oldDeviceConnected) {
+        // do stuff here on connecting
+        BLEDevice::getAdvertising()->stop();
+        oldDeviceConnected = deviceConnected;
+
+        pCharacteristic->setValue("Salut");
+
+    }
+
+
+
     if(_state==nullptr) {
         Serial.println("State machine terminated !!!");
         while(true);

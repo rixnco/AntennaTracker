@@ -20,7 +20,7 @@
 
 #else
 
-#define BTN_PIN                 4
+#define BTN_PIN                 23
 #define LED1_PIN                2
 
 #define SERVO_PIN               25
