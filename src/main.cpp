@@ -225,15 +225,33 @@ bool loadSettings();
 //            Variables
 //--------------------------------------
 
-#define FRIESH_SERVICE_UUID        "b5800000-6d90-448a-8252-42685e648239"
-#define FRIESH_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
+#define FRIESH_SERVICE_UUID           "b5800000-6d90-448a-8252-42685e648239"
+#define FRIESH_RX_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
+#define FRIESH_TX_CHARACTERISTIC_UUID "b5800002-6d90-448a-8252-42685e648239"
 #define FRIESH_BUFFER_SIZE          100
 
 #define FRIESH_PARAM_REQ            '$'
 
 
+// Configuration parameters ID
+// Used by the protocol handler
+#define PARAM_HOME            0
+#define PARAM_OFFSET          1
+#define PARAM_LAST            2
+
+const char* PARAM_NAME[] = {
+  "HOME",
+  "OFFSET"
+};
+
+
+
+
+
+
 static BLEServer* pServer = NULL;
-static BLECharacteristic* pCharacteristic = NULL;
+static BLECharacteristic* pRXCharacteristic = NULL;
+static BLECharacteristic* pTXCharacteristic = NULL;
 static bool deviceConnected = false;
 static bool oldDeviceConnected = false;
 static char    frieshBuffer[FRIESH_BUFFER_SIZE];
@@ -318,16 +336,82 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 
+void sendParam(int p) {
+  if(p<0 || p>=PARAM_LAST) return;
+  Serial.print("$");
+  Serial.print(PARAM_NAME[p]);
+  Serial.print("=");
+  switch(p) {
+    case PARAM_HOME:   Serial.println("hhhh"); break;
+    case PARAM_OFFSET: Serial.println("oooo"); break;
+    default: Serial.println("???");
+  }
+}
+
+void sendSettings() {
+  for(int t=0; t<PARAM_LAST; ++t) {
+    sendParam(t);
+  }
+}
+
+
+/**
+ * Get Parameter ID based on its name.
+ */
+int getParamID(const char* str, char** endptr) {
+  int l;
+  int t;
+  for(t=0; t<PARAM_LAST; ++t) {
+    l= strlen(PARAM_NAME[t]);
+    if(strncmp(str, PARAM_NAME[t], l)==0) {
+      if(endptr!=NULL) *endptr=(char*)str+l;    
+      break;
+    }
+  }
+  if(t==PARAM_LAST) return -1;
+  return t;
+}
+
 void sendAck() 
 {
-  pCharacteristic->setValue(">OK\n");
+  pTXCharacteristic->setValue(">OK\n");
 }
 
 void sendError(const char* msg)
 {
   // TODO add msg 
-  pCharacteristic->setValue(">ERROR");
+  pTXCharacteristic->setValue(">ERROR");
 }
+
+
+bool setParam(int p, char* ptr) {
+  float f;
+  unsigned long  ul;
+  
+  switch(p) {
+    case PARAM_HOME: 
+      ul= strtoul(ptr, &ptr, 10);
+      if(*ptr!=0) return false;
+      // noInterrupts();
+      // settings.setPoint=(int)ul;
+      // interrupts();
+      break;
+    case PARAM_OFFSET: 
+      f= strtod(ptr, &ptr);
+      if(*ptr!=0) return false;
+      // noInterrupts();
+      // settings.kp=f;
+      // interrupts();
+      break;
+    default:
+      return false;
+  }
+  return true;
+}
+
+
+
+
 
 bool processFrieshParamRequest() 
 {
@@ -337,27 +421,6 @@ bool processFrieshParamRequest()
    case '$':
     ++ptr;
     if(*ptr==0) sendSettings();
-    return true;
-    break;
-   case '<':
-    // Store settings.
-    noInterrupts();
-    write_settings();
-    interrupts();
-    Serial.println(">SETTINGS,stored");
-    return true;
-    break;
-   case '>':
-    // restore settings
-    bool b;
-    noInterrupts();
-    if(!(b=read_settings())) {
-      default_settings();
-      write_settings();
-    }
-    interrupts();
-    if(b) Serial.println(">SETTINGS,restored");
-    else Serial.println(">SETTINGS,default");
     return true;
     break;
   default:
@@ -391,12 +454,12 @@ void processFrieshCommand()
 class MyBLECharacteristicCallbacks: public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     std::string value = pCharacteristic->getValue();
-
+    Serial.print(value.c_str());
     for(int t =0; t< value.length(); ++t) 
     {
       if(frieshIdx<FRIESH_BUFFER_SIZE) {
         uint8_t c = value[t];
-        if(t=='\n')
+        if(c=='\n')
         {
           frieshBuffer[frieshIdx++]= 0;
           processFrieshCommand();
@@ -466,20 +529,24 @@ void setup()
     BLEService *pService = pServer->createService(FRIESH_SERVICE_UUID);
 
     // Create a BLE Characteristic
-    pCharacteristic = pService->createCharacteristic(
-                        FRIESH_CHARACTERISTIC_UUID,
-                        BLECharacteristic::PROPERTY_READ    |
-                        BLECharacteristic::PROPERTY_WRITE   |
-                        BLECharacteristic::PROPERTY_NOTIFY  |
-                        BLECharacteristic::PROPERTY_INDICATE
+    pRXCharacteristic = pService->createCharacteristic(
+                        FRIESH_RX_CHARACTERISTIC_UUID,
+                        BLECharacteristic::PROPERTY_WRITE    |
+                        BLECharacteristic::PROPERTY_WRITE_NR 
                       );
+    pRXCharacteristic->setCallbacks(new MyBLECharacteristicCallbacks());
 
+
+    // Create a BLE Characteristic
+    pTXCharacteristic = pService->createCharacteristic(
+                        FRIESH_TX_CHARACTERISTIC_UUID,
+                        BLECharacteristic::PROPERTY_READ    |
+                        BLECharacteristic::PROPERTY_NOTIFY  
+                      );
     // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
     // Create a BLE Descriptor
-    pCharacteristic->addDescriptor(new BLE2902());
+    pTXCharacteristic->addDescriptor(new BLE2902());
 
-
-    pCharacteristic->setCallbacks(new MyBLECharacteristicCallbacks());
 
     // Start the service
     pService->start();
@@ -609,7 +676,7 @@ void loop()
         BLEDevice::getAdvertising()->stop();
         oldDeviceConnected = deviceConnected;
 
-        pCharacteristic->setValue("Salut");
+        pTXCharacteristic->setValue("Salut");
 
     }
 
