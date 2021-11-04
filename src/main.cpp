@@ -1,7 +1,6 @@
 
 #include <Arduino.h>
 
-
 #include <EEPROM.h>
 #include <BLEDevice.h>
 #include <BLE2902.h>
@@ -26,28 +25,34 @@
 //              DEFINES
 //--------------------------------------
 
-#define EEPROM_SIZE             256
+#define EEPROM_SIZE 256
 
 //--------------------------------------
 //              Types
 //--------------------------------------
 
-#define SETTINGS_MAGIC          0xDEADBEEF
-#define SETTINGS_VERSION        100
+#define SETTINGS_MAGIC 0xDEADBEEF
+#define SETTINGS_VERSION 110
 
-typedef struct {
-    uint32_t    magic;
-    uint32_t    version;
-    bool        compassCalibrated;
-    int32_t     compassMinX;
-    int32_t     compassMaxX;
-    int32_t     compassMinY;
-    int32_t     compassMaxY;
-    uint64_t    bleRemoteAddress;
-    bool        homed;
-    float       homeLattitude;
-    float       homeLongitude;
-    float       homeElevation;
+typedef struct
+{
+    uint32_t magic;
+    uint32_t version;
+    bool compassCalibrated;
+    int32_t compassMinX;
+    int32_t compassMaxX;
+    int32_t compassMinY;
+    int32_t compassMaxY;
+    uint64_t bleRemoteAddress;
+
+    bool homed;
+    float homeLattitude;
+    float homeLongitude;
+    float homeElevation;
+
+    int32_t panOffset;
+    int32_t tiltOffset;
+    
 } settings_t;
 
 //-----------------------------------------------------------------------------------------
@@ -92,19 +97,18 @@ public:
     virtual void onStopTracking(FrieshDecoder *decoder) override;
 };
 
-
 //-----------------------------------------------------------------------------------------
 // BLEDataHandler stuff
 //-----------------------------------------------------------------------------------------
 
-class BLEDataHandler : public DataHandler {
+class BLEDataHandler : public DataHandler
+{
 public:
     BLEDataHandler();
     BLEDataHandler(size_t size);
-    virtual void onLinkConnected(DataLink* link) override;
-    virtual void onLinkDisconnected(DataLink* link) override;
+    virtual void onLinkConnected(DataLink *link) override;
+    virtual void onLinkDisconnected(DataLink *link) override;
 };
-
 
 //-----------------------------------------------------------------------------------------
 // BLE stuff
@@ -119,9 +123,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
    * Called for each advertising BLE server.
    */
     void onResult(BLEAdvertisedDevice advertisedDevice) override;
-};    // MyAdvertisedDeviceCallbacks
-
-
+}; // MyAdvertisedDeviceCallbacks
 
 //-----------------------------------------------------------------------------------------
 // State machine stuff
@@ -131,77 +133,85 @@ class State
 {
 public:
     virtual ~State() {}
-    virtual void enter(){}
+    virtual void enter() {}
     virtual State *run() = 0;
-    virtual void exit(){}
+    virtual void exit() {}
 };
 
-
-class StartupState : public State {
+class StartupState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
+
 private:
     bool _pressed;
     bool _long_press;
 };
 
-class IdleState : public State {
+class IdleState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
+
 private:
 };
 
-
-class CalibrationState : public State {
+class CalibrationState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
+
 private:
-    int      _loops;
-    float    _speed;
-    float    _angle;
+    int _loops;
+    float _speed;
+    float _angle;
     uint64_t _lastMeasureTime;
 };
 
-class ConnectionState : public State {
+class ConnectionState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
     virtual void exit() override;
+
 private:
 };
 
-class HomeState : public State {
+class HomeState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
+
 private:
     uint64_t _lastProcessTime;
 };
 
-class TrackingState : public State {
+class TrackingState : public State
+{
 public:
     virtual void enter() override;
     virtual State *run() override;
     virtual void exit() override;
+
 private:
     uint64_t _lastProcessTime;
 };
 
+StartupState startupState;
+IdleState idleState;
+CalibrationState calibrationState;
+ConnectionState connectionState;
+HomeState homeState;
+TrackingState trackingState;
 
-StartupState        startupState;
-IdleState           idleState;
-CalibrationState    calibrationState;
-ConnectionState     connectionState;
-HomeState           homeState;
-TrackingState       trackingState;
-
-State*      _state = &startupState;
-State*      _lastState = nullptr;;
-
-
+State *_state = &startupState;
+State *_lastState = nullptr;
+;
 
 //--------------------------------------
 //            Constants
@@ -211,7 +221,7 @@ State*      _lastState = nullptr;;
 //            Prototypes
 //--------------------------------------
 
-float   getAzimuth();
+float getAzimuth();
 float getHeadingError(float current_heading, float target_heading);
 
 bool wire_ping(uint8_t addr);
@@ -220,260 +230,506 @@ void storeSettings();
 void resetSettings();
 bool loadSettings();
 
-
 //--------------------------------------
 //            Variables
 //--------------------------------------
 
-#define FRIESH_SERVICE_UUID           "b5800000-6d90-448a-8252-42685e648239"
-#define FRIESH_RX_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
-#define FRIESH_TX_CHARACTERISTIC_UUID "b5800002-6d90-448a-8252-42685e648239"
-#define FRIESH_BUFFER_SIZE          100
+#define FRIESH_SERVICE_UUID "b5800000-6d90-448a-8252-42685e648239"
+#define FRIESH_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
+#define FRIESH_BUFFER_SIZE 100
 
-#define FRIESH_PARAM_REQ            '$'
-
+#define FRIESH_PARAM_REQ '$'
 
 // Configuration parameters ID
 // Used by the protocol handler
-#define PARAM_HOME            0
-#define PARAM_OFFSET          1
-#define PARAM_LAST            2
+#define PARAM_HOME 0
+#define PARAM_PAN  1
+#define PARAM_TILT 2
+#define PARAM_LAST 3
 
-const char* PARAM_NAME[] = {
-  "HOME",
-  "OFFSET"
+const char *PARAM_NAME[] = {
+    "HOME",
+    "PAN",
+    "TILT"
 };
 
-
-
-
-
-
-static BLEServer* pServer = NULL;
-static BLECharacteristic* pRXCharacteristic = NULL;
-static BLECharacteristic* pTXCharacteristic = NULL;
+static BLEServer *pServer = NULL;
+static BLECharacteristic *pCharacteristic = NULL;
 static bool deviceConnected = false;
 static bool oldDeviceConnected = false;
-static char    frieshBuffer[FRIESH_BUFFER_SIZE];
+static char frieshBuffer[FRIESH_BUFFER_SIZE];
 static uint8_t frieshIdx;
-
-
 
 settings_t g_settings;
 
 uint64_t g_remoteAddress = 0x0000000000000000;
-bool    g_connected = false;;
-GeoPt   g_homeLocation;
+bool g_connected = false;
+;
+GeoPt g_homeLocation;
 
-bool    g_gpsFix = false;
-int     g_gpsSatellites;
-GeoPt   g_gpsTarget;
+bool g_gpsFix = false;
+int g_gpsSatellites;
+GeoPt g_gpsTarget;
 
+CRSFDecoder bleCRSFDecoder;
+SPortDecoder bleSPortDecoder;
+BLEDataHandler bleDataHandler(2);
+BLEFrskyLink bleLink;
 
-CRSFDecoder         bleCRSFDecoder;
-SPortDecoder        bleSPortDecoder;
-BLEDataHandler      bleDataHandler(2);
-BLEFrskyLink        bleLink;
+FrieshDecoder serialFrieshDecoder;
+CRSFDecoder serialCRSFDecoder;
+SPortDecoder serialSPortDecoder;
+DataHandler serialDataHandler(3);
+StreamLink serialLink;
 
-FrieshDecoder       serialFrieshDecoder;
-CRSFDecoder         serialCRSFDecoder;
-SPortDecoder        serialSPortDecoder;
-DataHandler         serialDataHandler(3);
-StreamLink          serialLink;
+TelemetryHandler telemetryHandler;
+FrieshHandler frieshHandler;
 
-TelemetryHandler    telemetryHandler;
-FrieshHandler       frieshHandler;
+ESP32Stepper stepper;
+Servo tiltServo;
 
-ESP32Stepper        stepper;
-Servo               tiltServo;
+LCD_Display lcd(0x27);
+OLED_Display oled(0x3c, 5);
+DisplayProxy display;
 
-LCD_Display     lcd(0x27);
-OLED_Display    oled(0x3c, 5);
-DisplayProxy    display;
-
-Smoothed <float> ErrorSmoother;
+Smoothed<float> ErrorSmoother;
 
 AS5600 RotaryEncoder = AS5600();
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof(a[0]))
 
-#define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
+uint16_t g_startup_profile[] = {
+    LED_ON | 100,
+    LED_OFF | 1400};
 
-uint16_t    g_startup_profile[] = { 
-    LED_ON  |  100,
-    LED_OFF | 1400
+uint16_t g_connection_profile[] = {
+    LED_ON | 100,
+    LED_OFF | 100,
+    LED_ON | 100,
+    LED_OFF | 1200};
+
+uint16_t g_fix_profile[] = {
+    LED_ON | 100,
+    LED_OFF | 100,
+    LED_ON | 1200,
+    LED_OFF | 100};
+
+uint16_t g_tracking_profile[] = {
+    LED_ON | 300,
+    LED_OFF | 300,
 };
 
-uint16_t    g_connection_profile[] = { 
-    LED_ON  |  100,
-    LED_OFF |  100,
-    LED_ON  |  100,
-    LED_OFF | 1200
-};
-
-uint16_t    g_fix_profile[] = { 
-    LED_ON  |  100,
-    LED_OFF |  100,
-    LED_ON  | 1200,
-    LED_OFF |  100
-};
-
-uint16_t    g_tracking_profile[] = { 
-    LED_ON  |  300,
-    LED_OFF |  300,
-};
-
-
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
-      deviceConnected = true;
-      Serial.println("FrieshClient connected...");
+class MyServerCallbacks : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer)
+    {
+        deviceConnected = true;
+        Serial.println("FrieshClient connected...");
     };
 
-    void onDisconnect(BLEServer* pServer) {
-      deviceConnected = false;
-      Serial.println("FrieshClient disconnected...");
+    void onDisconnect(BLEServer *pServer)
+    {
+        deviceConnected = false;
+        Serial.println("FrieshClient disconnected...");
     }
 };
 
 
-void sendParam(int p) {
-  if(p<0 || p>=PARAM_LAST) return;
-  Serial.print("$");
-  Serial.print(PARAM_NAME[p]);
-  Serial.print("=");
-  switch(p) {
-    case PARAM_HOME:   Serial.println("hhhh"); break;
-    case PARAM_OFFSET: Serial.println("oooo"); break;
-    default: Serial.println("???");
-  }
+class BLEStream : public BLECharacteristicCallbacks
+{
+protected:
+    #define RX_BUFFER_LEN 256
+    uint8_t rxbuffer[RX_BUFFER_LEN];
+    uint16_t rxhead;
+    uint16_t rxtail;
+    uint16_t rxlen;
+    BLECharacteristic *pChar;
+    FreeRTOS::Semaphore semaphoreRead   = FreeRTOS::Semaphore("Read");
+    FreeRTOS::Semaphore semaphoreWrite  = FreeRTOS::Semaphore("Write");
+public:
+    BLEStream(BLECharacteristic *pCharacteristic) : rxhead(0), rxtail(0), rxlen(0), pChar(pCharacteristic)
+    {
+        semaphoreWrite.give();
+        if(pChar!=nullptr)
+        {
+            pChar->setCallbacks(this);
+        }
+    }
+
+    int available() 
+    {
+        return rxlen;
+    }
+    int read() 
+    {
+        int c = -1;
+        semaphoreRead.take();
+        if(rxlen) {
+            c = rxbuffer[rxtail];
+            rxlen-=1;
+            rxtail= (rxtail+1)%RX_BUFFER_LEN;
+        }
+        semaphoreRead.give();
+        return c;
+    }
+    size_t printf(const char* format, ...) {
+        char loc_buf[64];
+        char * temp = loc_buf;
+        va_list arg;
+        va_list copy;
+        va_start(arg, format);
+        va_copy(copy, arg);
+        int len = vsnprintf(temp, sizeof(loc_buf), format, copy);
+        va_end(copy);
+        if(len < 0) {
+            va_end(arg);
+            return 0;
+        };
+        if(len >= sizeof(loc_buf)){
+            temp = (char*) malloc(len+1);
+            if(temp == NULL) {
+                va_end(arg);
+                return 0;
+            }
+            len = vsnprintf(temp, len+1, format, arg);
+        }
+        va_end(arg);
+        int offset = 0;
+        int mtu = 23-1;
+        while(len>0)
+        {
+            // Serial.println("waiting sem");
+            semaphoreWrite.take();
+            int l = len>mtu? mtu:len;
+            pChar->setValue((uint8_t*)&temp[offset], l);
+            pChar->notify(true);
+            // char c= temp[offset+l];
+            // temp[offset+l]=0;
+            // Serial.printf("%s\n",&temp[offset]);
+            // temp[offset+l]=c;
+            offset+=l;
+            len-= l;
+        }
+        if(temp != loc_buf){
+            free(temp);
+        }
+        return len;
+    }
+
+    void onWrite(BLECharacteristic *pCharacteristic, esp_ble_gatts_cb_param_t *param)
+    {
+
+        uint16_t len = param->write.len;
+        uint8_t *pvalue = param->write.value;
+        //    Serial.println((char*)pvalue);
+        semaphoreRead.take();
+        for (int t = 0; t < len; ++t)
+        {
+            rxbuffer[rxhead] = pvalue[t];
+            rxhead = (rxhead + 1) % RX_BUFFER_LEN;
+            if (rxlen >= RX_BUFFER_LEN)
+            {
+                // overflow !!!
+                rxtail = (rxtail + 1) % RX_BUFFER_LEN;
+            }
+            else
+            {
+                rxlen += 1;
+            }
+        }
+        semaphoreRead.give();
+    }
+
+    void onStatus(BLECharacteristic *pCharacteristic, Status s, uint32_t code)
+    {
+        // Will be called on notification success or error.
+        // Serial.println("giving sem");
+        semaphoreWrite.give();
+    }
+};
+
+BLEStream* pBLEStream;
+
+
+
+
+
+void sendParam(int p)
+{
+    if (p < 0 || p >= PARAM_LAST)
+        return;
+    switch (p)
+    {
+    case PARAM_HOME:
+        Serial.printf("$%s=%.5f %.5f %.1f\n", PARAM_NAME[p], g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
+        pBLEStream->printf("$%s=%.5f %.5f %.1f\n", PARAM_NAME[p], g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
+        break;
+    case PARAM_PAN:
+        Serial.printf("$%s=%d\n", PARAM_NAME[p], g_settings.panOffset);
+        pBLEStream->printf("$%s=%d\n", PARAM_NAME[p], g_settings.panOffset);
+        break;
+    case PARAM_TILT:
+        Serial.printf("$%s=%d\n", PARAM_NAME[p], g_settings.tiltOffset);
+        pBLEStream->printf("$%s=%d\n", PARAM_NAME[p], g_settings.tiltOffset);
+        break;
+    default:
+        Serial.println("unknown param");
+    }
 }
 
-void sendSettings() {
-  for(int t=0; t<PARAM_LAST; ++t) {
-    sendParam(t);
-  }
+void sendSettings()
+{
+    for (int t = 0; t < PARAM_LAST; ++t)
+    {
+        sendParam(t);
+    }
 }
-
 
 /**
  * Get Parameter ID based on its name.
  */
-int getParamID(const char* str, char** endptr) {
-  int l;
-  int t;
-  for(t=0; t<PARAM_LAST; ++t) {
-    l= strlen(PARAM_NAME[t]);
-    if(strncmp(str, PARAM_NAME[t], l)==0) {
-      if(endptr!=NULL) *endptr=(char*)str+l;    
-      break;
+int getParamID(const char *str, char **endptr)
+{
+    int l,t,r;
+    char* ptr = (char*)str;
+    while(isalnum(*ptr) || *ptr=='_') 
+    {
+        *ptr=toupper(*ptr);
+        ++ptr;
     }
-  }
-  if(t==PARAM_LAST) return -1;
-  return t;
+    l = ptr-str;
+    if (endptr != NULL)
+    {
+        *endptr = (char *)str + l;
+    }
+    r = PARAM_LAST;
+    for (t = 0; t < PARAM_LAST; ++t)
+    {
+        if (strncmp(PARAM_NAME[t], str, l) == 0)
+        {
+            if (r != PARAM_LAST) 
+            {
+                r= PARAM_LAST;
+                break;
+            } 
+            else
+            {
+                r= t;
+            }
+        }
+    }
+    if (r == PARAM_LAST)
+        return -1;
+    return r;
 }
 
-void sendAck() 
+void sendAck()
 {
-  pTXCharacteristic->setValue(">OK\n");
+    Serial.println(">OK");
+    pBLEStream->printf(">OK\n");
 }
 
-void sendError(const char* msg)
+void sendError(const char *msg)
 {
-  // TODO add msg 
-  pTXCharacteristic->setValue(">ERROR");
+    Serial.printf(">ERROR:%s\n", msg);
+    pBLEStream->printf(">ERROR:%s\n", msg);
 }
 
+bool setParam(int p, char *ptr)
+{
 
-bool setParam(int p, char* ptr) {
-  float f;
-  unsigned long  ul;
-  
-  switch(p) {
-    case PARAM_HOME: 
-      ul= strtoul(ptr, &ptr, 10);
-      if(*ptr!=0) return false;
-      // noInterrupts();
-      // settings.setPoint=(int)ul;
-      // interrupts();
-      break;
-    case PARAM_OFFSET: 
-      f= strtod(ptr, &ptr);
-      if(*ptr!=0) return false;
-      // noInterrupts();
-      // settings.kp=f;
-      // interrupts();
-      break;
+    switch (p)
+    {
+    case PARAM_HOME:
+    {
+        float lat,lon,elv;
+        lat = strtod(ptr, &ptr);
+        lon = strtod(ptr, &ptr);
+        elv = strtod(ptr, &ptr);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.homeLattitude = lat;
+        g_settings.homeLongitude = lon;
+        g_settings.homeElevation = elv;
+        interrupts();
+        break;
+    }
+    case PARAM_PAN:
+    {
+        int32_t val = strtol(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.panOffset=val;
+        interrupts();
+        break;
+    }
+    case PARAM_TILT:
+    {
+        int32_t val = strtol(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.tiltOffset=val;
+        interrupts();
+        break;
+    }
     default:
-      return false;
-  }
-  return true;
-}
-
-
-
-
-
-bool processFrieshParamRequest() 
-{
-  char* ptr= &frieshBuffer[1];
-
-  switch(*ptr) {
-   case '$':
-    ++ptr;
-    if(*ptr==0) sendSettings();
+        return false;
+    }
     return true;
-    break;
-  default:
-    int p= getParamID(ptr, &ptr);
-    if(p==-1) return false;
-    if(*ptr==0) {
-      sendParam(p);
-    } else if(*ptr=='=') {
-      ++ptr;
-      if(*ptr==0 || !setParam(p, ptr)) return false;
-      return true;
-    }  
-  }  
-  return false;
 }
 
+bool incParam(int p, char *ptr)
+{
+    switch (p)
+    {
+    case PARAM_PAN:
+    {
+        uint32_t val = strtoul(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.panOffset+=val;
+        interrupts();
+        break;
+    }
+    case PARAM_TILT:
+    {
+        uint32_t val = strtoul(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.tiltOffset+=val;
+        interrupts();
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
+bool decParam(int p, char *ptr)
+{
+    switch (p)
+    {
+    case PARAM_PAN:
+    {
+        uint32_t val = strtoul(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.panOffset-=val;
+        interrupts();
+        break;
+    }
+    case PARAM_TILT:
+    {
+        uint32_t val = strtoul(ptr, &ptr, 10);
+        if (*ptr != 0)
+            return false;
+        noInterrupts();
+        g_settings.tiltOffset-=val;
+        interrupts();
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
+
+bool processFrieshParamRequest()
+{
+    char *ptr = &frieshBuffer[1];
+
+    switch (*ptr)
+    {
+    case '$':
+    {
+        ++ptr;
+        if (*ptr == 0)
+        {
+            sendSettings();
+            return true;
+        }
+        break;
+    }
+    case '<':
+    {
+        ++ptr;
+        if (*ptr == 0)
+        {
+            storeSettings();
+            return true;
+        }
+        break;
+    }
+    case '>':
+    {
+        ++ptr;
+        if (*ptr == 0)
+        {
+            loadSettings();
+            return true;
+        }
+        break;
+    }
+    default:
+    {
+        int p = getParamID(ptr, &ptr);
+        if (p == -1)
+            return false;
+        if (*ptr == 0)
+        {
+            sendParam(p);
+            return true;
+        }
+        else if (*ptr == '=')
+        {
+            ++ptr;
+            if (*ptr == 0 || !setParam(p, ptr))
+                return false;
+            return true;
+        }
+        else if (*ptr == '+')
+        {
+            ++ptr;
+            if (*ptr == 0 || !incParam(p, ptr))
+                return false;
+            return true;
+        }
+        else if (*ptr == '-')
+        {
+            ++ptr;
+            if (*ptr == 0 || !decParam(p, ptr))
+                return false;
+            return true;
+        }
+    }
+    }
+    return false;
+}
 
 void processFrieshCommand()
 {
-    switch(frieshBuffer[0]) {
-      case FRIESH_PARAM_REQ:
-        if(!processFrieshParamRequest()) sendError("Invalid parameter command");
-        else sendAck();  
+    switch (frieshBuffer[0])
+    {
+    case FRIESH_PARAM_REQ:
+        if (!processFrieshParamRequest())
+        {
+            sendError("Invalid parameter command");
+        }
+        else
+        {
+            sendAck();
+        }
         break;
     }
-
-
 }
-
-
-class MyBLECharacteristicCallbacks: public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pCharacteristic) {
-    std::string value = pCharacteristic->getValue();
-    Serial.print(value.c_str());
-    for(int t =0; t< value.length(); ++t) 
-    {
-      if(frieshIdx<FRIESH_BUFFER_SIZE) {
-        uint8_t c = value[t];
-        if(c=='\n')
-        {
-          frieshBuffer[frieshIdx++]= 0;
-          processFrieshCommand();
-
-        }
-        else 
-        {
-           if(c!='\r' && c!=' ' && c!='\t' ) frieshBuffer[frieshIdx++]= c;
-        }
-      }
-    }
-
-  }
-};
 
 
 void setup()
@@ -490,8 +746,8 @@ void setup()
     if(loadSettings())
     {
         Serial.println("settings restored...");
-    } 
-    else 
+    }
+    else
     {
         Serial.println("Using default settings...");
     }
@@ -520,7 +776,6 @@ void setup()
     Serial.print("Configuring BLE scanner");
     BLEDevice::init("");
 
-
     // Create the BLE Server
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
@@ -529,42 +784,30 @@ void setup()
     BLEService *pService = pServer->createService(FRIESH_SERVICE_UUID);
 
     // Create a BLE Characteristic
-    pRXCharacteristic = pService->createCharacteristic(
-                        FRIESH_RX_CHARACTERISTIC_UUID,
-                        BLECharacteristic::PROPERTY_WRITE    |
-                        BLECharacteristic::PROPERTY_WRITE_NR 
-                      );
-    pRXCharacteristic->setCallbacks(new MyBLECharacteristicCallbacks());
+    pCharacteristic = pService->createCharacteristic(
+        FRIESH_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE |
+            BLECharacteristic::PROPERTY_WRITE_NR |
+            BLECharacteristic::PROPERTY_READ |
+            BLECharacteristic::PROPERTY_NOTIFY);
 
-
-    // Create a BLE Characteristic
-    pTXCharacteristic = pService->createCharacteristic(
-                        FRIESH_TX_CHARACTERISTIC_UUID,
-                        BLECharacteristic::PROPERTY_READ    |
-                        BLECharacteristic::PROPERTY_NOTIFY  
-                      );
     // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.descriptor.gatt.client_characteristic_configuration.xml
     // Create a BLE Descriptor
-    pTXCharacteristic->addDescriptor(new BLE2902());
+    pCharacteristic->addDescriptor(new BLE2902());
+
+    pBLEStream= new BLEStream(pCharacteristic);
 
 
     // Start the service
     pService->start();
 
-
-  // Start advertising
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
-  pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
-  BLEDevice::startAdvertising();
-  Serial.println("Waiting a client connection to notify...");
-
-
-
-
-
-
+    // Start advertising
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
+    pAdvertising->setScanResponse(false);
+    pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
+    BLEDevice::startAdvertising();
+    Serial.println("Waiting a client connection to connect...");
 
     // Retrieve a Scanner and set the callback we want to use to be informed when we
     // have detected a new device.  Specify that we want active scanning and start the
@@ -575,9 +818,8 @@ void setup()
     pBLEScan->setWindow(449);
     pBLEScan->setActiveScan(true);
 
-    g_connected= false;
+    g_connected = false;
     Serial.println("...OK");
-
 
     Serial.print("Configuring stepper...");
     if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV))
@@ -600,41 +842,45 @@ void setup()
     // tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*SERVO_MAX));
     // while(!isButtonPressed()) {}
     // while(isButtonPressed()) {}
-    tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*0));
+    tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * 0));
 
     // Scan I2C bus
     Serial.println("Scaning I2C bus...");
-    for(int t=1; t<127; ++t) {
-        if(wire_ping(t)) Serial.printf("Found device at address: %02x\n", t);
+    for (int t = 1; t < 127; ++t)
+    {
+        if (wire_ping(t))
+            Serial.printf("Found device at address: %02x\n", t);
     }
 
     Serial.println("Checking compass...");
     // TODO : check AS5600 is ok & restore calibration
     Serial.println("Initializing Compass...OK");
 
-    if(g_settings.bleRemoteAddress!=0) {
+    if (g_settings.bleRemoteAddress != 0)
+    {
         Serial.println("Restored BLE Remote address");
     }
 
-    if(g_settings.homed) {
+    if (g_settings.homed)
+    {
         Serial.println("Restored home location");
-        g_homeLocation= GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
-        g_gpsTarget= g_homeLocation;
+        g_homeLocation = GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
+        g_gpsTarget = g_homeLocation;
     }
 
-    if(wire_ping(0x3c))
+    if (wire_ping(0x3c))
     {
         Serial.println("Configuring OLED Display...");
         display.setDisplay(&oled);
-    } 
-    else if(wire_ping(0x27)) 
+    }
+    else if (wire_ping(0x27))
     {
         Serial.println("Configuring LCD Display...");
         display.setDisplay(&lcd);
     }
     display.init();
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.printf("AntennaTracker");
     // display.setCursor(0,1);
     // display.printf("%3d\xF8", getAzimuth());
@@ -650,7 +896,7 @@ void setup()
     //     display.setCursor(0,0);
     //     display.printf("%3d  %c", t, t);
     //     display.show();
-        
+
     //     for(int u=0; !b && u<10; ++u) {
     //         delay(100);
     //         b=isButtonPressed();
@@ -658,73 +904,102 @@ void setup()
     // }
     // while(true);
 
-
 } // End of setup.
 
 void loop()
 {
     // disconnecting
-    if (!deviceConnected && oldDeviceConnected) {
+    if (!deviceConnected && oldDeviceConnected)
+    {
         delay(500); // give the bluetooth stack the chance to get things ready
         Serial.println("start advertising");
         oldDeviceConnected = deviceConnected;
         pServer->startAdvertising(); // restart advertising
     }
     // connecting
-    if (deviceConnected && !oldDeviceConnected) {
+    if (deviceConnected && !oldDeviceConnected)
+    {
         // do stuff here on connecting
         BLEDevice::getAdvertising()->stop();
         oldDeviceConnected = deviceConnected;
 
-        pTXCharacteristic->setValue("Salut");
+        pBLEStream->printf("$>\n");
+    }
 
+    while(pBLEStream->available())
+    {
+        uint8_t c = pBLEStream->read();
+        if(frieshIdx>=FRIESH_BUFFER_SIZE)
+        {
+            // overflow !!!
+            frieshIdx=0;
+        }
+
+        if(c=='\n')
+        {
+            frieshBuffer[frieshIdx]= 0;
+            processFrieshCommand();
+            frieshIdx=0;
+        }
+        else
+        {
+            if(c!='\r' && c!=' ' && c!='\t' ) frieshBuffer[frieshIdx++]= c;
+        }
     }
 
 
 
-    if(_state==nullptr) {
+    if (_state == nullptr)
+    {
         Serial.println("State machine terminated !!!");
-        while(true);
+        while (true)
+            ;
     }
-    if(_state != _lastState) {
-        if(_lastState!=nullptr) _lastState->exit();
+    if (_state != _lastState)
+    {
+        if (_lastState != nullptr)
+            _lastState->exit();
         _state->enter();
         _lastState = _state;
     }
     _state = _state->run();
-    
+
     serialLink.process();
 }
 
 // Settings Stuff
-void resetSettings() {
+void resetSettings()
+{
     memset(&g_settings, 0, sizeof(g_settings));
-    g_settings.magic   = SETTINGS_MAGIC;
+    g_settings.magic = SETTINGS_MAGIC;
     g_settings.version = SETTINGS_VERSION;
     storeSettings();
 }
 
-void storeSettings() {
+void storeSettings()
+{
     EEPROM.put<settings_t>(0, g_settings);
     EEPROM.commit();
     Serial.println(">>> settings stored");
 }
 
-bool loadSettings() {
+bool loadSettings()
+{
     uint32_t magic;
     EEPROM.get<uint32_t>(0, magic);
-    if(magic== SETTINGS_MAGIC) 
+    if (magic == SETTINGS_MAGIC)
     {
         // We got some settings stored in EEPROM
         uint32_t version;
         EEPROM.get<uint32_t>(4, version);
-        if(version==SETTINGS_VERSION)
+        if (version == SETTINGS_VERSION)
         {
             // Just read settings
             EEPROM.get<settings_t>(0, g_settings);
+            Serial.println(">>> settings restored");            
             return true;
         }
-        else 
+        else
         {
             // Need to convert stored settings to our version
             // For now just reset settings to our version's default.
@@ -735,52 +1010,52 @@ bool loadSettings() {
     return false;
 }
 
-
-
 void StartupState::enter()
 {
     // AUTO Calibration
     Serial.println("StartupState::enter");
 
     resetButtonPressTime();
-    _pressed    = false;
+    _pressed = false;
     _long_press = false;
 
     ledBlink(g_startup_profile, ARRAY_LEN(g_startup_profile));
 
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.print("Click to start");
-    display.setCursor(0,1);
+    display.setCursor(0, 1);
     display.print("Hold to reset");
     display.show();
 }
 
 State *StartupState::run()
 {
-    static uint64_t lastTime=0;
+    static uint64_t lastTime = 0;
 
-    if(millis() - lastTime < 30) return this;
-    lastTime= millis();
+    if (millis() - lastTime < 30)
+        return this;
+    lastTime = millis();
 
-
-    if(!isButtonPressed())
+    if (!isButtonPressed())
     {
-        if(_long_press) {
+        if (_long_press)
+        {
             resetSettings();
         }
-        if(_pressed) return &idleState;
+        if (_pressed)
+            return &idleState;
         return this;
     }
     _pressed = true;
-    if(getButtonPressTime()>BTN_LONG_PRESS_TIME) {
+    if (getButtonPressTime() > BTN_LONG_PRESS_TIME)
+    {
         ledState(LED_ON);
         _long_press = true;
     }
 
     return this;
 }
-
 
 void IdleState::enter()
 {
@@ -790,13 +1065,16 @@ void IdleState::enter()
 }
 State *IdleState::run()
 {
-    if(!g_settings.compassCalibrated) {
+    if (!g_settings.compassCalibrated)
+    {
         return &calibrationState;
     }
-    if(!g_connected) {
+    if (!g_connected)
+    {
         return &connectionState;
     }
-    if(!g_settings.homed) {
+    if (!g_settings.homed)
+    {
         return &homeState;
     }
     return &trackingState;
@@ -818,9 +1096,9 @@ void CalibrationState::enter()
 
     ledState(LED_OFF);
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.print("Calibrating");
-    display.setCursor(0,1);
+    display.setCursor(0, 1);
     display.print("please wait...");
     display.show();
 }
@@ -832,74 +1110,76 @@ State *CalibrationState::run()
     return &idleState;
 }
 
-
 void ConnectionState::enter()
 {
     Serial.println("ConnectionState::enter");
-    if(g_remoteAddress==0) {
+    if (g_remoteAddress == 0)
+    {
         Serial.println("Start scanning...");
-        g_remoteAddress=0;
+        g_remoteAddress = 0;
         BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
     }
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.print("Connection...");
     display.show();
 
-    ledBlink(g_connection_profile,ARRAY_LEN(g_connection_profile));
+    ledBlink(g_connection_profile, ARRAY_LEN(g_connection_profile));
 }
 
 State *ConnectionState::run()
 {
-    if(g_connected)
+    if (g_connected)
     {
         Serial.println("ConnectionState::run -> connected...");
         return &idleState;
     }
-    if(g_remoteAddress!=0)
+    if (g_remoteAddress != 0)
     {
         BLEDevice::getScan()->stop();
 
         display.clear();
-        display.setCursor(0,0);
+        display.setCursor(0, 0);
         display.print("Connecting");
-        display.setCursor(0,1);
+        display.setCursor(0, 1);
         display.printf("> %02X%02X%02X%02X%02X%02X",
-            (uint8_t)(g_remoteAddress>>40),
-            (uint8_t)(g_remoteAddress>>32),
-            (uint8_t)(g_remoteAddress>>24),
-            (uint8_t)(g_remoteAddress>>16),
-            (uint8_t)(g_remoteAddress>> 8),
-            (uint8_t)(g_remoteAddress    ));
+                       (uint8_t)(g_remoteAddress >> 40),
+                       (uint8_t)(g_remoteAddress >> 32),
+                       (uint8_t)(g_remoteAddress >> 24),
+                       (uint8_t)(g_remoteAddress >> 16),
+                       (uint8_t)(g_remoteAddress >> 8),
+                       (uint8_t)(g_remoteAddress));
         display.show();
 
         Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
-            (uint8_t)(g_remoteAddress>>40),
-            (uint8_t)(g_remoteAddress>>32),
-            (uint8_t)(g_remoteAddress>>24),
-            (uint8_t)(g_remoteAddress>>16),
-            (uint8_t)(g_remoteAddress>> 8),
-            (uint8_t)(g_remoteAddress    ));
+                      (uint8_t)(g_remoteAddress >> 40),
+                      (uint8_t)(g_remoteAddress >> 32),
+                      (uint8_t)(g_remoteAddress >> 24),
+                      (uint8_t)(g_remoteAddress >> 16),
+                      (uint8_t)(g_remoteAddress >> 8),
+                      (uint8_t)(g_remoteAddress));
 
-
-        if(bleLink.connect(g_remoteAddress)) {
+        if (bleLink.connect(g_remoteAddress))
+        {
             g_connected = true;
             Serial.println("Connection...OK");
-            g_settings.bleRemoteAddress= g_remoteAddress;
+            g_settings.bleRemoteAddress = g_remoteAddress;
             storeSettings();
-        } else {
+        }
+        else
+        {
             Serial.println("Connection...FAIL");
             g_remoteAddress = 0;
             Serial.println("Start scanning...");
             BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
         }
-
     }
 
     return this;
 }
 
-void ConnectionState::exit() {
+void ConnectionState::exit()
+{
     BLEDevice::getScan()->stop();
 }
 
@@ -907,9 +1187,9 @@ void HomeState::enter()
 {
     Serial.println("HomeState::enter");
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.print("Home position");
-    display.setCursor(0,1);
+    display.setCursor(0, 1);
     display.print("Waiting fix...");
     display.show();
 
@@ -918,22 +1198,25 @@ void HomeState::enter()
 
 State *HomeState::run()
 {
-    static uint64_t lastTime =0;
-    static bool lastFix= true;
-    static GeoPt lastTarget(0,0);
+    static uint64_t lastTime = 0;
+    static bool lastFix = true;
+    static GeoPt lastTarget(0, 0);
 
-    if(!g_connected) return &idleState;
+    if (!g_connected)
+        return &idleState;
 
-    if(!g_gpsFix && ( lastFix || (millis()-lastTime>=200))) {
-        lastTime=millis();
+    if (!g_gpsFix && (lastFix || (millis() - lastTime >= 200)))
+    {
+        lastTime = millis();
         display.clear();
-        display.setCursor(0,0);
+        display.setCursor(0, 0);
         display.print("Waiting fix...");
-        display.setCursor(0,1);
+        display.setCursor(0, 1);
         display.printf("A:% 3.1f\xF8", getAzimuth());
         display.show();
     }
-    if(!g_gpsFix) {
+    if (!g_gpsFix)
+    {
         lastFix = g_gpsFix;
         return this;
     }
@@ -941,102 +1224,114 @@ State *HomeState::run()
     // We have a fix !!!
     ledState(LED_ON);
 
-    if(lastTarget != g_gpsTarget) {
-        lastTarget= g_gpsTarget;
+    if (lastTarget != g_gpsTarget)
+    {
+        lastTarget = g_gpsTarget;
         display.clear();
-        display.setCursor(0,0);
+        display.setCursor(0, 0);
         display.print("btn to set HOME");
-        display.setCursor(0,1);
+        display.setCursor(0, 1);
         display.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
         display.show();
     }
 
-    if(isButtonPressed())
+    if (isButtonPressed())
     {
-        g_homeLocation= g_gpsTarget;
-        g_settings.homed= true;
-        g_settings.homeLattitude= g_homeLocation.getLatitude();
-        g_settings.homeLongitude= g_homeLocation.getLongitude();
-        g_settings.homeElevation= g_homeLocation.getElevation();
+        g_homeLocation = g_gpsTarget;
+        g_settings.homed = true;
+        g_settings.homeLattitude = g_homeLocation.getLatitude();
+        g_settings.homeLongitude = g_homeLocation.getLongitude();
+        g_settings.homeElevation = g_homeLocation.getElevation();
         storeSettings();
         return &idleState;
     }
     return this;
 }
 
-
 void TrackingState::enter()
 {
     Serial.println("TrackingState::enter");
     _lastProcessTime = 0;
     display.clear();
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     float d = g_homeLocation.distanceTo(g_gpsTarget);
-    if(d<20) {
+    if (d < 20)
+    {
         display.print("T: ---.-\xF8 --.--km");
-    } else {
+    }
+    else
+    {
         display.printf("T:% 3.1f\xF8 %2.2fkm", g_homeLocation.azimuthTo(g_gpsTarget), d);
     }
-    display.setCursor(0,1);
+    display.setCursor(0, 1);
     display.printf("A:% 3.1f\xF8", getAzimuth());
     display.show();
-    ledBlink(g_tracking_profile, sizeof(g_tracking_profile)/sizeof(g_tracking_profile[0]));
+    ledBlink(g_tracking_profile, sizeof(g_tracking_profile) / sizeof(g_tracking_profile[0]));
 }
 
 State *TrackingState::run()
 {
-    if(!g_settings.compassCalibrated) return &idleState;
-    if(!g_settings.homed) return &idleState;
-    if(!g_connected) return &idleState;
+    if (!g_settings.compassCalibrated)
+        return &idleState;
+    if (!g_settings.homed)
+        return &idleState;
+    if (!g_connected)
+        return &idleState;
 
-//    if(!g_gpsFix) return this;
+    //    if(!g_gpsFix) return this;
 
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
     uint64_t now = millis();
 
+    if (now - _lastProcessTime < 100)
+        return this;
 
-    if(now - _lastProcessTime < 100) return this;
-
-    _lastProcessTime=now;
+    _lastProcessTime = now;
 
     float target_d = g_homeLocation.distanceTo(g_gpsTarget);
     float current_a = getAzimuth();
 
-    if(target_d < 20) {
-        if(stepper.isMoving()) {
+    if (target_d < 20)
+    {
+        if (stepper.isMoving())
+        {
             stepper.stop();
             lastDisplayTime = 0;
         }
-        if(now-lastDisplayTime>=200) {
+        if (now - lastDisplayTime >= 200)
+        {
             lastDisplayTime = now;
             display.clear();
-            display.setCursor(0,0);
+            display.setCursor(0, 0);
             display.print("T: ---.-\xF8 --.--km");
-            display.setCursor(0,1);
+            display.setCursor(0, 1);
             display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
             display.show();
         }
         return this;
     }
 
-
     float target_a = g_homeLocation.azimuthTo(g_gpsTarget);
-    while(target_a<0) target_a+=360;
-    while(target_a>=360) target_a-=360;
+    while (target_a < 0)
+        target_a += 360;
+    while (target_a >= 360)
+        target_a -= 360;
     float error = getHeadingError(current_a, target_a);
     ErrorSmoother.add(error);
     float speed = ErrorSmoother.get() * 0.1;
 
     float tilt = g_homeLocation.tiltTo(g_gpsTarget);
-    if(tilt<0) tilt = 0;
+    if (tilt < 0)
+        tilt = 0;
 
-    if ( now-lastDisplayTime>=200 ) {
+    if (now - lastDisplayTime >= 200)
+    {
 
         display.clear();
-        display.setCursor(0,0);
-        display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d*0.001);
-        display.setCursor(0,1);
+        display.setCursor(0, 0);
+        display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+        display.setCursor(0, 1);
         display.printf("A: %3.1f\xF8 %2.1f\xF8", current_a, tilt);
         display.show();
 
@@ -1051,17 +1346,18 @@ State *TrackingState::run()
     }
     stepper.move(speed, dir);
 
-    if(tilt < SERVO_MIN) tilt= SERVO_MIN;
-    if(tilt > SERVO_MAX) tilt= SERVO_MAX;
+    if (tilt < SERVO_MIN)
+        tilt = SERVO_MIN;
+    if (tilt > SERVO_MAX)
+        tilt = SERVO_MAX;
 
-    tiltServo.write(SERVO_ZERO_OFFSET+(SERVO_DIRECTION*tilt));
+    tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * tilt));
 
-    if( now - lastDebugTime > 1000)
+    if (now - lastDebugTime > 1000)
     {
-        lastDebugTime= now;
+        lastDebugTime = now;
         Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  tilt: %.1f\n", target_d, target_a, current_a, error, tilt);
     }
-
 
     return this;
 }
@@ -1073,20 +1369,19 @@ void TrackingState::exit()
     display.show();
 }
 
-
 bool wire_ping(uint8_t addr)
 {
     Wire.beginTransmission(addr);
     return Wire.endTransmission() == 0;
 }
 
-
 //float getAzimuth() {
 //    compass.read();
 //    return compass.getAzimuth();
 //}
 
-float getAzimuth() {
+float getAzimuth()
+{
     RotaryEncoder.read();
     return RotaryEncoder.getAngleDegrees();
 }
@@ -1114,36 +1409,33 @@ float getHeadingError(float current_heading, float target_heading)
 // TELEMETRY HANDLING
 
 float g_GAlt;
-uint32_t tlm_dbg_idx= 0;
+uint32_t tlm_dbg_idx = 0;
 void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
-    g_gpsFix   = true;
-    g_gpsTarget= GeoPt(latitude, longitude, g_GAlt);
+    g_gpsFix = true;
+    g_gpsTarget = GeoPt(latitude, longitude, g_GAlt);
     Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, g_GAlt);
 }
 void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
     g_gpsFix = gpsFix;
     g_gpsSatellites = satellites;
-//    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
+    //    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
 }
 void TelemetryHandler::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
     g_GAlt = altitude;
-//    Serial.printf("GAlt       : %.2fm\n", altitude);
+    //    Serial.printf("GAlt       : %.2fm\n", altitude);
 }
 void TelemetryHandler::onGSpeedData(TelemetryDecoder *decoder, float speed)
 {
-//    Serial.printf("GSpeed     : %.2fm/s\n", speed);
+    //    Serial.printf("GSpeed     : %.2fm/s\n", speed);
 }
-
-
-
 
 void TelemetryHandler::onFrameDecoded(TelemetryDecoder *decoder, uint32_t id)
 {
     // Do nothing
-//    Serial.printf("received %02X\n", id);
+    //    Serial.printf("received %02X\n", id);
 }
 void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
 {
@@ -1202,9 +1494,7 @@ void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
     // Serial.printf("AirSpeed   : %.2fm/s\n", speed);
 }
 
-
 // FRIESH PROTOCOL
-
 
 void FrieshHandler::onFrameError(FrieshDecoder *decoder, FrieshError error, uint32_t param)
 {
@@ -1227,7 +1517,6 @@ void FrieshHandler::onStopTracking(FrieshDecoder *decoder)
     Serial.printf("FRIESH: stop tracking...");
 }
 
-
 //-----------------------------------------------------------------------------------------
 // BLE DataHandler stuff
 //-----------------------------------------------------------------------------------------
@@ -1235,19 +1524,16 @@ void FrieshHandler::onStopTracking(FrieshDecoder *decoder)
 BLEDataHandler::BLEDataHandler() : DataHandler() {}
 BLEDataHandler::BLEDataHandler(size_t size) : DataHandler(size) {}
 
-void BLEDataHandler::onLinkConnected(DataLink* link)
+void BLEDataHandler::onLinkConnected(DataLink *link)
 {
 }
 
-void BLEDataHandler::onLinkDisconnected(DataLink* link)
+void BLEDataHandler::onLinkDisconnected(DataLink *link)
 {
     g_connected = false;
 }
 
-
-
 /// BLE
-
 
 /**
  * Called for each advertising BLE server.
@@ -1257,13 +1543,13 @@ void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
 {
     Serial.print("BLE Advertised Device: ");
     Serial.println(advertisedDevice.toString().c_str());
-    uint64_t addr = *(uint64_t*)(advertisedDevice.getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
+    uint64_t addr = *(uint64_t *)(advertisedDevice.getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
 
     // We have found a device, let us now see if it contains the service we are looking for.
-    if ( (g_settings.bleRemoteAddress==addr) ||
-         ((g_settings.bleRemoteAddress==0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID)))
+    if ((g_settings.bleRemoteAddress == addr) ||
+        ((g_settings.bleRemoteAddress == 0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID)))
     {
         Serial.println("Binding to BLEFrskyClient");
-        g_remoteAddress= addr;
+        g_remoteAddress = addr;
     }
 }

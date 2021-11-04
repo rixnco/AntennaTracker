@@ -84,7 +84,7 @@ bool BLEFrskyLink::connect(uint64_t address)
         }
         else
         {
-            _frskyCharacteristic->registerForNotify(notifyCallback, true, this);
+            _frskyCharacteristic->registerForNotify(notifyCallback, true, true, this);
             // Serial.println("...OK");
         }
     }

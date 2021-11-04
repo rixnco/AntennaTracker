@@ -1,5 +1,6 @@
 {
   "files.associations": {
     "random": "cpp"
-  }
+  },
+  "editor.tabSize": 2
 }
