@@ -238,6 +238,7 @@ bool loadSettings();
 #define FRIESH_CHARACTERISTIC_UUID "b5800001-6d90-448a-8252-42685e648239"
 #define FRIESH_BUFFER_SIZE 100
 
+#define FRIESH_MTU       20
 #define FRIESH_PARAM_REQ '$'
 
 // Configuration parameters ID
@@ -395,7 +396,7 @@ public:
         }
         va_end(arg);
         int offset = 0;
-        int mtu = 23-1;
+        int mtu = FRIESH_MTU;
         while(len>0)
         {
             // Serial.println("waiting sem");
