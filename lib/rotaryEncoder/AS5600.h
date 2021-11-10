@@ -32,15 +32,15 @@
 class AS5600 : public RotaryEncoder {
     public:
         AS5600();
-        void init() override;
+        bool init() override;
         void read() override;
         uint16_t getRawAngle();
         float getAngleDegrees() override;
         byte getStatus() const;
 
     protected:
-        static uint16_t _read_word(byte addr, byte reg);
-        static uint8_t  _read_byte(byte addr, byte reg);
+        static bool _read_word(byte addr, byte reg, uint16_t& res);
+        static bool  _read_byte(byte addr, byte reg, uint8_t& res);
         byte _address;
         uint16_t _reg1;
         byte _reg2;

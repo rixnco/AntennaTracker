@@ -23,7 +23,7 @@ void TelemetryListener::onAirSpeedData(TelemetryDecoder* decoder, float speed) {
 
 
 
-TelemetryDecoder::TelemetryDecoder(std::string name) : DataDecoder(name), _listener(nullptr) {
+TelemetryDecoder::TelemetryDecoder(std::string name) : ProtocolDecoder(name), _listener(nullptr) {
     
 };
 TelemetryDecoder::~TelemetryDecoder() {

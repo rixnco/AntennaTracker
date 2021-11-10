@@ -1,7 +1,7 @@
 #ifndef __TELEMETRY_DECODER_H__
 #define __TELEMETRY_DECODER_H__
 
-#include "DataDecoder.h"
+#include "ProtocolDecoder.h"
 #include <stdint.h>
 
 enum TelemetryError { TLM_ERROR_CRC, TLM_ERROR_OVERFLOW, TLM_ERROR_UNKNOWN_ID, TLM_ERROR_BAD_FORMAT };
@@ -34,7 +34,7 @@ public:
 };
 
 
-class TelemetryDecoder : public DataDecoder {
+class TelemetryDecoder : public ProtocolDecoder {
 public:
     TelemetryDecoder(std::string name);
     virtual ~TelemetryDecoder();

@@ -12,7 +12,7 @@ public:
 
     void setStream(Stream *stream);
     
-    bool available();
+    int available();
     void process();
 
 private:

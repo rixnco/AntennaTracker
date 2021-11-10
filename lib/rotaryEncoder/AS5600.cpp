@@ -4,35 +4,38 @@
 
 #include "AS5600.h"
 
-uint16_t AS5600::_read_word(byte addr, byte reg) {
+bool AS5600::_read_word(byte addr, byte reg, uint16_t& res) {
     Wire.beginTransmission(addr);
     Wire.write(reg);
     Wire.endTransmission();
-    Wire.requestFrom(addr, (uint8_t)2);
+    if(Wire.requestFrom(addr, (uint8_t)2) != 2) return false;
     while(Wire.available() <2 );
-    uint16_t res = ((Wire.read()) << 8) | (Wire.read() & 0xFF);
-    return res;
+    res = ((Wire.read()) << 8) | (Wire.read() & 0xFF);
+    return true;
 }
 
-uint8_t AS5600::_read_byte(byte addr, byte reg) {
+bool AS5600::_read_byte(byte addr, byte reg, uint8_t& res) {
     Wire.beginTransmission(addr);
     Wire.write(reg);
     Wire.endTransmission();
-    Wire.requestFrom(addr, (uint8_t)1);
+    if(Wire.requestFrom(addr, (uint8_t)1) != 1) return false;
     while(Wire.available() < 1 );
-    uint8_t res = (Wire.read() & 0xFF);
-    return res;
+    res = (Wire.read() & 0xFF);
+    return true;
 }
 
-void AS5600::init() {
+bool AS5600::init() {
     byte status = 0;
-    byte reg = _read_byte(AS5600_ADDR, AS5600_STAT) & 0b00111000u;
+    byte reg;
+    if(!_read_byte(AS5600_ADDR, AS5600_STAT, reg)) return false;
+    reg = reg & 0b00111000u;
     if(reg!=status) {
         status = reg;
         Serial.printf("status: %02X\n", status);
     } else {
         Serial.printf("Nope\n");
     }
+    return status;
 }
 
 uint16_t AS5600::getRawAngle() {
@@ -47,9 +50,10 @@ AS5600::AS5600() {
 }
 
 void AS5600::read() {
-    _reg1= _read_word(AS5600_ADDR, AS5600_ANG_HI);
-    _reg2 = _read_byte(AS5600_ADDR, AS5600_STAT) & 0b00111000u;
-    //_reg3 = _read_byte(AS5600_ADDR, AS5600_AGC);
+    _read_word(AS5600_ADDR, AS5600_ANG_HI, _reg1);
+    _read_byte(AS5600_ADDR, AS5600_STAT, _reg2);
+    _reg2 &= 0b00111000u;
+    //_read_byte(AS5600_ADDR, AS5600_AGC, _reg3);
 }
 
 float AS5600::getAngleDegrees() {

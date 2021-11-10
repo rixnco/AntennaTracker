@@ -51,7 +51,7 @@ DataHandler::~DataHandler()
 
 }
 
-void DataHandler::addDecoder(DataDecoder* decoder) 
+void DataHandler::addDecoder(ProtocolDecoder* decoder) 
 {
     if(decoder==nullptr) return;
     _decoders.push_back(decoder);

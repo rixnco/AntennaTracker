@@ -16,8 +16,8 @@ void StreamLink::setStream(Stream* stream)
 }
 
 
-bool StreamLink::available() {
-    if(_stream==nullptr) return false;
+int StreamLink::available() {
+    if(_stream==nullptr) return 0;
     return _stream->available();
 
 }

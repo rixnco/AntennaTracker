@@ -4,7 +4,7 @@
 #include <vector>
 #include <stdint.h>
 #include <stddef.h>
-#include <DataDecoder.h>
+#include <ProtocolDecoder.h>
 
 
 class DataLink;
@@ -40,12 +40,12 @@ public:
     DataHandler(size_t size);
     virtual ~DataHandler();
 
-    void addDecoder(DataDecoder* decoder);
+    void addDecoder(ProtocolDecoder* decoder);
 
     virtual void onDataReceived(DataLink* link, uint8_t data);
 
 private:
-    std::vector<DataDecoder*> _decoders;
+    std::vector<ProtocolDecoder*> _decoders;
 };
 
 

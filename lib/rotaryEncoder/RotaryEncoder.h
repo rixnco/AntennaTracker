@@ -10,7 +10,7 @@
 class RotaryEncoder {
     public:
         virtual ~RotaryEncoder();
-        virtual void init() = 0;
+        virtual bool init() = 0;
         virtual void read() = 0;
         virtual float getAngleDegrees() = 0;
         static float getOffsetedAngle(float angle);
