@@ -31,9 +31,6 @@ bool AS5600::init() {
     reg = reg & 0b00111000u;
     if(reg!=status) {
         status = reg;
-        Serial.printf("status: %02X\n", status);
-    } else {
-        Serial.printf("Nope\n");
     }
     return status;
 }

@@ -13,10 +13,10 @@
 #include "bsp.h"
 #include "display.h"
 #include "DataLink.h"
-#include "BLEFrskyLink.h"
+#include "BLERemoteFrskyStream.h"
 #include "StreamLink.h"
 #include "Smoothed.h"
-#include "BLEStream.h"
+#include "BLEFrieshStream.h"
 
 #include "AS5600.h"
 
@@ -26,39 +26,38 @@
 
 #define EEPROM_SIZE 256
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof(a[0]))
+
+#define SETTINGS_MAGIC          0xDEADBEEF
+#define SETTINGS_VERSION        100
+#define SETTINGS_MAX_NAME_LEN   15
+
 //--------------------------------------
 //              Types
 //--------------------------------------
 
-#define SETTINGS_MAGIC 0xDEADBEEF
-#define SETTINGS_VERSION 111
 
 typedef struct
 {
     uint32_t magic;
     uint32_t version;
-    bool compassCalibrated;
-    int32_t compassMinX;
-    int32_t compassMaxX;
-    int32_t compassMinY;
-    int32_t compassMaxY;
-    uint64_t bleRemoteAddress;
 
-    bool homed;
     float homeLattitude;
     float homeLongitude;
     float homeElevation;
+    char  homeName[SETTINGS_MAX_NAME_LEN+1];
 
     float aimLattitude;
     float aimLongitude;
     float aimElevation;
+    char  aimName[SETTINGS_MAX_NAME_LEN+1];
 
     int32_t panOffset;
     int32_t tiltOffset;
     
 } settings_t;
 
-static bool g_tracking;
+enum trackerMode_t { TRACKING, AIMING };
 
 //-----------------------------------------------------------------------------------------
 // Telemetry stuff
@@ -133,19 +132,46 @@ public:
 };
 
 //-----------------------------------------------------------------------------------------
-// BLE stuff
+// BLE Client / Server stuff
 //-----------------------------------------------------------------------------------------
+
 
 /**
  * Scan for BLE servers and find the first one that advertises the service we are looking for.
  */
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
+class BLEFrskyConnection : public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks, protected BLEClient
 {
-    /**
-   * Called for each advertising BLE server.
-   */
+public:
+    BLEFrskyConnection();
+
     void onResult(BLEAdvertisedDevice advertisedDevice) override;
-}; // MyAdvertisedDeviceCallbacks
+
+    void process();
+
+	void onConnect(BLEClient *pClient) override;
+	void onDisconnect(BLEClient *pClient) override;
+
+    inline bool isConnected() { return _connected; }
+protected:
+    uint64_t   _address;
+    bool       _connected;
+}; // BLEFrskyClient
+
+
+class BLEFrieshConnection : public BLEServerCallbacks
+{
+public:
+    BLEFrieshConnection();
+
+    void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
+    void onDisconnect(BLEServer *pServer) override;
+
+    bool isConnected();
+protected:
+    bool _connected;
+};
+
+
 
 //-----------------------------------------------------------------------------------------
 // State machine stuff
@@ -180,37 +206,13 @@ public:
 private:
 };
 
-class CalibrationState : public State
+class ConfigurationState : public State
 {
 public:
     virtual void enter() override;
     virtual State *run() override;
 
 private:
-    int _loops;
-    float _speed;
-    float _angle;
-    uint64_t _lastMeasureTime;
-};
-
-class ConnectionState : public State
-{
-public:
-    virtual void enter() override;
-    virtual State *run() override;
-    virtual void exit() override;
-
-private:
-};
-
-class HomeState : public State
-{
-public:
-    virtual void enter() override;
-    virtual State *run() override;
-
-private:
-    uint64_t _lastProcessTime;
 };
 
 class TrackingState : public State
@@ -226,14 +228,12 @@ private:
 
 StartupState startupState;
 IdleState idleState;
-CalibrationState calibrationState;
-ConnectionState connectionState;
-HomeState homeState;
+ConfigurationState configurationState;
 TrackingState trackingState;
 
 State *_state = &startupState;
 State *_lastState = nullptr;
-;
+
 
 //--------------------------------------
 //            Constants
@@ -246,49 +246,58 @@ State *_lastState = nullptr;
 float getAzimuth();
 float getHeadingError(float current_heading, float target_heading);
 
-bool wire_ping(uint8_t addr);
 
 bool storeSettings();
 void resetSettings();
 bool loadSettings();
+bool isHomed();
+
+
+bool wire_ping(uint8_t addr);
+
 
 //--------------------------------------
 //            Variables
 //--------------------------------------
 
 
-BLEServer* pServer;
-BLEStream* pBLEStream;
+BLEServer               *pFrieshServer;
+BLEFrieshConnection     frieshConnection;
+bool                    g_frieshClientConnected = false;
+BLEFrieshStream         *pFrieshStream;
 
-static bool deviceConnected = false;
-static bool oldDeviceConnected = false;
+
+BLEFrskyConnection      frskyConnection;
+bool                    g_frskyConnected = false;
+BLERemoteFrskyStream    *pFrskyStream;
+
+
 
 settings_t g_settings;
 
-uint64_t g_remoteAddress = 0x0000000000000000;
-bool g_connected = false;
-;
-GeoPt g_homeLocation;
 
-bool g_gpsFix = false;
-int g_gpsSatellites;
-GeoPt g_gpsTarget;
+GeoPt   g_home;
+GeoPt   g_target;
+bool    g_gpsFix = false;
+int     g_gpsSatellites;
 
-CRSFDecoder frskyCRSFDecoder;
-SPortDecoder frskySPortDecoder;
-BLEDataHandler frskyDataHandler(2);
-BLEFrskyLink frskyLink;
-
-FrieshDecoder serialFrieshDecoder;
-CRSFDecoder serialCRSFDecoder;
-SPortDecoder serialSPortDecoder;
-DataHandler serialDataHandler(3);
-StreamLink serialLink;
+trackerMode_t g_trackerMode;
 
 
-FrieshDecoder bleFrieshDecoder;
-DataHandler   bleDataHandler(1);
-StreamLink    bleLink;
+CRSFDecoder             frskyCRSFDecoder;
+SPortDecoder            frskySPortDecoder;
+BLEDataHandler          frskyDataHandler(2);
+StreamLink              frskyLink;
+
+FrieshDecoder           serialFrieshDecoder;
+CRSFDecoder             serialCRSFDecoder;
+SPortDecoder            serialSPortDecoder;
+DataHandler             serialDataHandler(3);
+StreamLink              serialLink;
+
+FrieshDecoder           frieshFrieshDecoder;
+DataHandler             frieshDataHandler(1);
+StreamLink              frieshLink;
 
 TelemetryHandler telemetryHandler;
 MyFrieshHandler frieshHandler;
@@ -303,8 +312,6 @@ DisplayProxy display;
 Smoothed<float> ErrorSmoother;
 
 AS5600 RotaryEncoder = AS5600();
-
-#define ARRAY_LEN(a) (sizeof(a) / sizeof(a[0]))
 
 uint16_t g_startup_profile[] = {
     LED_ON | 100,
@@ -327,26 +334,6 @@ uint16_t g_tracking_profile[] = {
     LED_OFF | 300,
 };
 
-class MyServerCallbacks : public BLEServerCallbacks
-{
-    void onConnect(BLEServer *pServer)
-    {
-        deviceConnected = true;
-        Serial.println("FrieshClient connected...");
-    };
-
-    void onDisconnect(BLEServer *pServer)
-    {
-        deviceConnected = false;
-        Serial.println("FrieshClient disconnected...");
-    }
-};
-
-
-
-
-
-
 
 void setup()
 {
@@ -354,7 +341,6 @@ void setup()
 
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
-    ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
     btnInit();
     ledInit();
     if(!loadSettings())
@@ -362,77 +348,49 @@ void setup()
         Serial.println("Using default settings...");
     }
 
-    if (g_settings.bleRemoteAddress != 0)
-    {
-        Serial.println("Restored BLE Remote address");
-    }
+    g_frieshClientConnected = false;
+    g_frskyConnected = false;
+    g_trackerMode = TRACKING;
 
-    if (g_settings.homed)
-    {
-        Serial.println("Restored home location");
-        g_homeLocation = GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
-        g_gpsTarget = g_homeLocation;
-    }
+    ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
 
 
-    Serial.print("Configuring Frsky link");
+    Serial.print("Configuring the telemetry link");
+    pFrskyStream = new BLERemoteFrskyStream();
     frskyCRSFDecoder.setTelemetryListener(&telemetryHandler);
     frskySPortDecoder.setTelemetryListener(&telemetryHandler);
     frskyDataHandler.addDecoder(&frskyCRSFDecoder);
     frskyDataHandler.addDecoder(&frskySPortDecoder);
     frskyLink.setLinkListener(&frskyDataHandler);
+    frskyLink.setStream(pFrskyStream);
     Serial.println("...OK");
 
-    Serial.print("Configuring serial link");
+    Serial.print("Configuring the serial link");
     serialFrieshDecoder.setFrieshHandler(&frieshHandler);
-    serialFrieshDecoder.setOutputStream(&Serial2);
+    serialFrieshDecoder.setOutputStream(&Serial);
     serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
     serialSPortDecoder.setTelemetryListener(&telemetryHandler);
     serialDataHandler.addDecoder(&serialFrieshDecoder);
     serialDataHandler.addDecoder(&serialCRSFDecoder);
     serialDataHandler.addDecoder(&serialSPortDecoder);
     serialLink.setLinkListener(&serialDataHandler);
-    serialLink.setStream(&Serial2);
-    Serial2.begin(115200);
+    serialLink.setStream(&Serial);
+    //Serial2.begin(115200);
     Serial.println("...OK");
 
-    Serial.print("Configuring BLE Stream");
-    BLEDevice::init("Friesh");
-
+    Serial.print("Configuring the friesh link");
     // Initializes the BLE Stream server
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
+    BLEDevice::init("Friesh");
+    pFrieshServer = BLEDevice::createServer();
+    pFrieshServer->setCallbacks(&frieshConnection);
+    pFrieshStream= new BLEFrieshStream(pFrieshServer);
 
-    pBLEStream= new BLEStream(pServer);
-
-    // Start advertising
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
-    BLEDevice::startAdvertising();
-
-    // Retrieve a Scanner and set the callback we want to use to be informed when we
-    // have detected a new device.  Specify that we want active scanning and start the
-    // scan to run for 5 seconds.
-    BLEScan *pBLEScan = BLEDevice::getScan();
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    pBLEScan->setInterval(1349);
-    pBLEScan->setWindow(449);
-    pBLEScan->setActiveScan(true);
-
-    g_connected = false;
+    frieshFrieshDecoder.setFrieshHandler(&frieshHandler);
+    frieshFrieshDecoder.setOutputStream(pFrieshStream);
+    frieshDataHandler.addDecoder(&frieshFrieshDecoder);
+    frieshLink.setLinkListener(&frieshDataHandler);
+    frieshLink.setStream(pFrieshStream);
     Serial.println("...OK");
-
-    Serial.print("Configuring BLE link");
-    bleFrieshDecoder.setFrieshHandler(&frieshHandler);
-    bleFrieshDecoder.setOutputStream(pBLEStream);
-    bleDataHandler.addDecoder(&bleFrieshDecoder);
-    bleLink.setLinkListener(&bleDataHandler);
-    bleLink.setStream(pBLEStream);
-    Serial.println("...OK");
-
-
 
     Serial.print("Configuring stepper...");
     if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV))
@@ -494,43 +452,57 @@ void setup()
     // display.printf("%3d\xF8", getAzimuth());
     display.show();
 
-    Serial.println("Started...");
 
-    delay(1000);
+    // Start advertising
+    Serial.print("Advertising the friesh Server");
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
+    BLEDevice::startAdvertising();
+    Serial.println("...OK");
 
-    // bool b=false;
-    // for(int t=128; !b && t<255; ++t) {
-    //     display.clear();
-    //     display.setCursor(0,0);
-    //     display.printf("%3d  %c", t, t);
-    //     display.show();
+    Serial.println("Scanning for a Frsky telemetry connection");
+    // Retrieve a Scanner and set the callback we want to use to be informed when we
+    // have detected a new device.  Specify that we want active scanning and start the
+    // scan to run for 5 seconds.
+    BLEScan *pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(&frskyConnection);
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+    pBLEScan->start(-1, nullptr, false);
 
-    //     for(int u=0; !b && u<10; ++u) {
-    //         delay(100);
-    //         b=isButtonPressed();
-    //     }
-    // }
-    // while(true);
+    Serial.println("AntennaTracker started...");
+
+    delay(200);
 
 } // End of setup.
 
 void loop()
 {
     // disconnecting
-    if (!deviceConnected && oldDeviceConnected)
+    if (g_frieshClientConnected && !frieshConnection.isConnected())
     {
-        delay(500); // give the bluetooth stack the chance to get things ready
         Serial.println("start advertising");
-        oldDeviceConnected = deviceConnected;
-        pServer->startAdvertising(); // restart advertising
+        g_frieshClientConnected = false;
+        pFrieshServer->startAdvertising(); // restart advertising
     }
     // connecting
-    if (deviceConnected && !oldDeviceConnected)
+    if (!g_frieshClientConnected && frieshConnection.isConnected())
     {
         // do stuff here on connecting
         BLEDevice::getAdvertising()->stop();
-        oldDeviceConnected = deviceConnected;
+        g_frieshClientConnected = true;
     }
+
+    frskyConnection.process();
+
+    frskyLink.process();
+    serialLink.process();
+    frieshLink.process();
+
+
 
     if (_state == nullptr)
     {
@@ -547,8 +519,6 @@ void loop()
     }
     _state = _state->run();
 
-    serialLink.process();
-    bleLink.process();
 }
 
 // Settings Stuff
@@ -593,6 +563,12 @@ bool loadSettings()
     resetSettings();
 
     return false;
+}
+
+bool isHomed() 
+{
+    if (g_settings.homeLattitude==0 && g_settings.homeLongitude==0 && g_settings.homeElevation==0) return false;
+    return true;
 }
 
 void StartupState::enter()
@@ -650,188 +626,11 @@ void IdleState::enter()
 }
 State *IdleState::run()
 {
-    if (!g_settings.compassCalibrated)
-    {
-        return &calibrationState;
-    }
-    if (!g_connected)
-    {
-        return &connectionState;
-    }
-    if (!g_settings.homed)
-    {
-        return &homeState;
-    }
+
     return &trackingState;
 }
 
-void CalibrationState::enter()
-{
-    Serial.println("Calibration::enter");
-    g_settings.compassCalibrated = false;
-    g_settings.compassMinX = 999999;
-    g_settings.compassMaxX = -999999;
-    g_settings.compassMinY = 999999;
-    g_settings.compassMaxY = -999999;
 
-    _loops = 2;
-    _speed = 15;
-    _angle = -390;
-    _lastMeasureTime = 0;
-
-    ledState(LED_OFF);
-    display.clear();
-    display.setCursor(0, 0);
-    display.print("Calibrating");
-    display.setCursor(0, 1);
-    display.print("please wait...");
-    display.show();
-}
-
-State *CalibrationState::run()
-{
-    g_settings.compassCalibrated = true;
-    storeSettings();
-    return &idleState;
-}
-
-void ConnectionState::enter()
-{
-    Serial.println("ConnectionState::enter");
-    if (g_remoteAddress == 0)
-    {
-        Serial.println("Start scanning...");
-        g_remoteAddress = 0;
-        BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
-    }
-    display.clear();
-    display.setCursor(0, 0);
-    display.print("Connection...");
-    display.show();
-
-    ledBlink(g_connection_profile, ARRAY_LEN(g_connection_profile));
-}
-
-State *ConnectionState::run()
-{
-    if (g_connected)
-    {
-        Serial.println("ConnectionState::run -> connected...");
-        return &idleState;
-    }
-    if (g_remoteAddress != 0)
-    {
-        BLEDevice::getScan()->stop();
-
-        display.clear();
-        display.setCursor(0, 0);
-        display.print("Connecting");
-        display.setCursor(0, 1);
-        display.printf("> %02X%02X%02X%02X%02X%02X",
-                       (uint8_t)(g_remoteAddress >> 40),
-                       (uint8_t)(g_remoteAddress >> 32),
-                       (uint8_t)(g_remoteAddress >> 24),
-                       (uint8_t)(g_remoteAddress >> 16),
-                       (uint8_t)(g_remoteAddress >> 8),
-                       (uint8_t)(g_remoteAddress));
-        display.show();
-
-        Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
-                      (uint8_t)(g_remoteAddress >> 40),
-                      (uint8_t)(g_remoteAddress >> 32),
-                      (uint8_t)(g_remoteAddress >> 24),
-                      (uint8_t)(g_remoteAddress >> 16),
-                      (uint8_t)(g_remoteAddress >> 8),
-                      (uint8_t)(g_remoteAddress));
-
-        if (frskyLink.connect(g_remoteAddress))
-        {
-            g_connected = true;
-            Serial.println("Connection...OK");
-            g_settings.bleRemoteAddress = g_remoteAddress;
-            storeSettings();
-        }
-        else
-        {
-            Serial.println("Connection...FAIL");
-            g_remoteAddress = 0;
-            Serial.println("Start scanning...");
-            BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
-        }
-    }
-
-    return this;
-}
-
-void ConnectionState::exit()
-{
-    BLEDevice::getScan()->stop();
-}
-
-void HomeState::enter()
-{
-    Serial.println("HomeState::enter");
-    display.clear();
-    display.setCursor(0, 0);
-    display.print("Home position");
-    display.setCursor(0, 1);
-    display.print("Waiting fix...");
-    display.show();
-
-    ledBlink(g_fix_profile, ARRAY_LEN(g_fix_profile));
-}
-
-State *HomeState::run()
-{
-    static uint64_t lastTime = 0;
-    static bool lastFix = true;
-    static GeoPt lastTarget(0, 0);
-
-    if (!g_connected)
-        return &idleState;
-
-    if (!g_gpsFix && (lastFix || (millis() - lastTime >= 200)))
-    {
-        lastTime = millis();
-        display.clear();
-        display.setCursor(0, 0);
-        display.print("Waiting fix...");
-        display.setCursor(0, 1);
-        display.printf("A:% 3.1f\xF8", getAzimuth());
-        display.show();
-    }
-    if (!g_gpsFix)
-    {
-        lastFix = g_gpsFix;
-        return this;
-    }
-
-    // We have a fix !!!
-    ledState(LED_ON);
-
-    if (lastTarget != g_gpsTarget)
-    {
-        lastTarget = g_gpsTarget;
-        display.clear();
-        display.setCursor(0, 0);
-        display.print("btn to set HOME");
-        display.setCursor(0, 1);
-        display.printf("%.4f , %.4f", lastTarget.getLatitude(), lastTarget.getLongitude());
-        display.show();
-    }
-
-    if (isButtonPressed())
-    {
-        g_homeLocation = g_gpsTarget;
-        g_settings.homed = true;
-        g_settings.homeLattitude = g_homeLocation.getLatitude();
-        g_settings.homeLongitude = g_homeLocation.getLongitude();
-        g_settings.homeElevation = g_homeLocation.getElevation();
-        storeSettings();
-        return &idleState;
-    }
-    return this;
-}
 
 void TrackingState::enter()
 {
@@ -839,14 +638,14 @@ void TrackingState::enter()
     _lastProcessTime = 0;
     display.clear();
     display.setCursor(0, 0);
-    float d = g_homeLocation.distanceTo(g_gpsTarget);
+    float d = g_home.distanceTo(g_target);
     if (d < 20)
     {
         display.print("T: ---.-\xF8 --.--km");
     }
     else
     {
-        display.printf("T:% 3.1f\xF8 %2.2fkm", g_homeLocation.azimuthTo(g_gpsTarget), d);
+        display.printf("T:% 3.1f\xF8 %2.2fkm", g_home.azimuthTo(g_target), d);
     }
     display.setCursor(0, 1);
     display.printf("A:% 3.1f\xF8", getAzimuth());
@@ -856,12 +655,7 @@ void TrackingState::enter()
 
 State *TrackingState::run()
 {
-    if (!g_settings.compassCalibrated)
-        return &idleState;
-    if (!g_settings.homed)
-        return &idleState;
-    if (!g_connected)
-        return &idleState;
+
 
     //    if(!g_gpsFix) return this;
 
@@ -874,7 +668,7 @@ State *TrackingState::run()
 
     _lastProcessTime = now;
 
-    float target_d = g_homeLocation.distanceTo(g_gpsTarget);
+    float target_d = g_home.distanceTo(g_target);
     float current_a = getAzimuth();
 
     if (target_d < 20)
@@ -897,7 +691,7 @@ State *TrackingState::run()
         return this;
     }
 
-    float target_a = g_homeLocation.azimuthTo(g_gpsTarget);
+    float target_a = g_home.azimuthTo(g_target);
     while (target_a < 0)
         target_a += 360;
     while (target_a >= 360)
@@ -906,7 +700,7 @@ State *TrackingState::run()
     ErrorSmoother.add(error);
     float speed = ErrorSmoother.get() * 0.1;
 
-    float tilt = g_homeLocation.tiltTo(g_gpsTarget);
+    float tilt = g_home.tiltTo(g_target);
     if (tilt < 0)
         tilt = 0;
 
@@ -998,7 +792,7 @@ uint32_t tlm_dbg_idx = 0;
 void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     g_gpsFix = true;
-    g_gpsTarget = GeoPt(latitude, longitude, g_GAlt);
+    g_target = GeoPt(latitude, longitude, g_GAlt);
     Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, g_GAlt);
 }
 void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
@@ -1121,11 +915,11 @@ float MyFrieshHandler::getAimElevation()
 
 void MyFrieshHandler::setTracking(bool tracking) 
 {
-  g_tracking= tracking;  
+  g_trackerMode= tracking?TRACKING:AIMING;  
 }
 bool MyFrieshHandler::isTracking() 
 {
-    return g_tracking!=0;
+    return g_trackerMode!=AIMING;
 }
 
 void MyFrieshHandler::setPanOffset(int pan) 
@@ -1176,26 +970,107 @@ void BLEDataHandler::onLinkConnected(DataLink *link)
 
 void BLEDataHandler::onLinkDisconnected(DataLink *link)
 {
-    g_connected = false;
+    g_frskyConnected = false;
 }
 
-/// BLE
 
-/**
- * Called for each advertising BLE server.
- */
-
-void MyAdvertisedDeviceCallbacks::onResult(BLEAdvertisedDevice advertisedDevice)
+/// BLE Frsky Client callbacks
+BLEFrskyConnection::BLEFrskyConnection() : _connected(false)
 {
-    uint64_t addr = *(uint64_t *)(advertisedDevice.getAddress().getNative()) & 0x0000FFFFFFFFFFFF;
+    setClientCallbacks(this);
+}
+
+void BLEFrskyConnection::onResult(BLEAdvertisedDevice advertisedDevice)
+{
+    if(_connected || _address!=0) return;
+
 
     // We have found a device, let us now see if it contains the service we are looking for.
-    if ((g_settings.bleRemoteAddress == addr) ||
-        ((g_settings.bleRemoteAddress == 0) && advertisedDevice.isAdvertisingService(FRSKY_SERVICE_UUID)))
+    if (advertisedDevice.isAdvertisingService(FRSKY_STREAM_SERVICE_UUID))
     {
-        Serial.print("BLE Advertised Device: ");
+
+        BLEDevice::getScan()->stop();
+
+        Serial.print("BLEFrsky Device: ");
         Serial.println(advertisedDevice.toString().c_str());
-        Serial.println("Binding to BLEFrskyClient");
-        g_remoteAddress = addr;
+
+        BLEAddress addr = advertisedDevice.getAddress();
+        _address = *(uint64_t *)(addr.getNative()) & 0x0000FFFFFFFFFFFF;
+
     }
+}
+
+void BLEFrskyConnection::process() 
+{
+    if(!_connected && _address!=0) 
+    {
+        // Do connect
+        Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
+                      (uint8_t)(_address >> 40),
+                      (uint8_t)(_address >> 32),
+                      (uint8_t)(_address >> 24),
+                      (uint8_t)(_address >> 16),
+                      (uint8_t)(_address >> 8),
+                      (uint8_t)(_address));
+        
+        if (connect(BLEAddress((uint8_t*)&_address)))
+        {
+            Serial.println("BLEFrskyStream connected ...OK");
+            _connected = true;
+        } else {
+            _address=0;
+            _connected = false;
+            Serial.println("BLEFrskyStream connection ...Failed");
+        }
+        return;
+    }
+
+    if(_connected && _address == 0) 
+    {
+        // Do disconnect
+        Serial.println("BLEFrskyStream disconnected");
+        pFrskyStream->setRemoteService(nullptr);
+        _connected = false;
+        _address=0;
+        Serial.println("Start scanning...");
+        BLEDevice::getScan()->start(-1, nullptr, false); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+    }
+}
+
+
+void BLEFrskyConnection::onConnect(BLEClient *pClient) 
+{
+}
+	
+void BLEFrskyConnection::onDisconnect(BLEClient *pClient) 
+{
+    _address = 0;
+}
+
+
+BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
+{
+}
+
+void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
+{
+    // Discard wrongly dispatched Client messages
+    if(param->connect.link_role!=1) return;
+
+    uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
+    _connected = true;
+    Serial.printf("FrieshClient connected: %012lX\n");
+};
+
+void BLEFrieshConnection::onDisconnect(BLEServer *pServer)
+{
+
+    if(pServer!=pFrieshServer) return;
+    _connected = false;
+    Serial.println("FrieshClient disconnected...");
+}
+
+bool BLEFrieshConnection::isConnected() 
+{
+    return _connected;
 }
