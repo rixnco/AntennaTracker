@@ -296,8 +296,10 @@ SPortDecoder            serialSPortDecoder;
 DataHandler             serialDataHandler(3);
 StreamLink              serialLink;
 
+SPortDecoder            frieshSPortDecoder;
+CRSFDecoder             frieshCRSFDecoder;
 FrieshDecoder           frieshFrieshDecoder;
-DataHandler             frieshDataHandler(1);
+DataHandler             frieshDataHandler(3);
 StreamLink              frieshLink;
 
 TelemetryHandler telemetryHandler;
@@ -340,8 +342,12 @@ void setup()
 {
     EEPROM.begin(EEPROM_SIZE);
 
+
     Serial.begin(115200);
     Serial.println("Starting Antenna Tracker");
+
+    BLEDevice::init("Friesh");
+
     btnInit();
     ledInit();
     if(!loadSettings())
@@ -355,13 +361,15 @@ void setup()
 
     ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
 
-
     Serial.print("Configuring the telemetry link");
     pFrskyStream = new BLERemoteFrskyStream();
+   
     frskyCRSFDecoder.setTelemetryListener(&telemetryHandler);
     frskySPortDecoder.setTelemetryListener(&telemetryHandler);
+   
     frskyDataHandler.addDecoder(&frskyCRSFDecoder);
     frskyDataHandler.addDecoder(&frskySPortDecoder);
+   
     frskyLink.setLinkListener(&frskyDataHandler);
     frskyLink.setStream(pFrskyStream);
     Serial.println("...OK");
@@ -371,16 +379,16 @@ void setup()
     serialFrieshDecoder.setOutputStream(&Serial);
     serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
     serialSPortDecoder.setTelemetryListener(&telemetryHandler);
+
     serialDataHandler.addDecoder(&serialFrieshDecoder);
     serialDataHandler.addDecoder(&serialCRSFDecoder);
     serialDataHandler.addDecoder(&serialSPortDecoder);
+
     serialLink.setLinkListener(&serialDataHandler);
     serialLink.setStream(&Serial);
-    //Serial2.begin(115200);
     Serial.println("...OK");
 
     Serial.print("Configuring the friesh link");
-     BLEDevice::init("Friesh");
     // Initializes the BLE Stream server
     // pFrieshServer = BLEDevice::createServer();
     // pFrieshServer->setCallbacks(&frieshConnection);
@@ -388,10 +396,15 @@ void setup()
     Serial2.begin(115200);
     pFrieshStream = &Serial2;
 
-
     frieshFrieshDecoder.setFrieshHandler(&frieshHandler);
     frieshFrieshDecoder.setOutputStream(pFrieshStream);
+    frieshCRSFDecoder.setTelemetryListener(&telemetryHandler);
+    frieshSPortDecoder.setTelemetryListener(&telemetryHandler);
+ 
     frieshDataHandler.addDecoder(&frieshFrieshDecoder);
+    frieshDataHandler.addDecoder(&serialCRSFDecoder);
+    frieshDataHandler.addDecoder(&serialSPortDecoder);
+
     frieshLink.setLinkListener(&frieshDataHandler);
     frieshLink.setStream(pFrieshStream);
     Serial.println("...OK");
