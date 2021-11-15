@@ -158,18 +158,18 @@ protected:
 }; // BLEFrskyClient
 
 
-class BLEFrieshConnection : public BLEServerCallbacks
-{
-public:
-    BLEFrieshConnection();
+// class BLEFrieshConnection : public BLEServerCallbacks
+// {
+// public:
+//     BLEFrieshConnection();
 
-    void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
-    void onDisconnect(BLEServer *pServer) override;
+//     void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
+//     void onDisconnect(BLEServer *pServer) override;
 
-    bool isConnected();
-protected:
-    bool _connected;
-};
+//     bool isConnected();
+// protected:
+//     bool _connected;
+// };
 
 
 
@@ -261,10 +261,11 @@ bool wire_ping(uint8_t addr);
 //--------------------------------------
 
 
-BLEServer               *pFrieshServer;
-BLEFrieshConnection     frieshConnection;
-bool                    g_frieshClientConnected = false;
-BLEFrieshStream         *pFrieshStream;
+// BLEServer               *pFrieshServer;
+// BLEFrieshConnection     frieshConnection;
+// bool                    g_frieshClientConnected = false;
+// BLEFrieshStream         *pFrieshStream;
+Stream                     *pFrieshStream;
 
 
 BLEFrskyConnection      frskyConnection;
@@ -348,7 +349,7 @@ void setup()
         Serial.println("Using default settings...");
     }
 
-    g_frieshClientConnected = false;
+    // g_frieshClientConnected = false;
     g_frskyConnected = false;
     g_trackerMode = TRACKING;
 
@@ -379,11 +380,14 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring the friesh link");
+     BLEDevice::init("Friesh");
     // Initializes the BLE Stream server
-    BLEDevice::init("Friesh");
-    pFrieshServer = BLEDevice::createServer();
-    pFrieshServer->setCallbacks(&frieshConnection);
-    pFrieshStream= new BLEFrieshStream(pFrieshServer);
+    // pFrieshServer = BLEDevice::createServer();
+    // pFrieshServer->setCallbacks(&frieshConnection);
+    // pFrieshStream= new BLEFrieshStream(pFrieshServer);
+    Serial2.begin(115200);
+    pFrieshStream = &Serial2;
+
 
     frieshFrieshDecoder.setFrieshHandler(&frieshHandler);
     frieshFrieshDecoder.setOutputStream(pFrieshStream);
@@ -453,14 +457,15 @@ void setup()
     display.show();
 
 
-    // Start advertising
-    Serial.print("Advertising the friesh Server");
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
-    BLEDevice::startAdvertising();
-    Serial.println("...OK");
+    // // Start advertising
+    // Serial.print("Advertising the friesh Server");
+    // BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    // pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
+    // pAdvertising->setScanResponse(true);
+    // pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
+    // delay(500);
+    // BLEDevice::startAdvertising();
+    // Serial.println("...OK");
 
     Serial.println("Scanning for a Frsky telemetry connection");
     // Retrieve a Scanner and set the callback we want to use to be informed when we
@@ -471,30 +476,29 @@ void setup()
     pBLEScan->setInterval(1349);
     pBLEScan->setWindow(449);
     pBLEScan->setActiveScan(true);
+    delay(200);
     pBLEScan->start(-1, nullptr, false);
 
     Serial.println("AntennaTracker started...");
-
-    delay(200);
 
 } // End of setup.
 
 void loop()
 {
-    // disconnecting
-    if (g_frieshClientConnected && !frieshConnection.isConnected())
-    {
-        Serial.println("start advertising");
-        g_frieshClientConnected = false;
-        pFrieshServer->startAdvertising(); // restart advertising
-    }
-    // connecting
-    if (!g_frieshClientConnected && frieshConnection.isConnected())
-    {
-        // do stuff here on connecting
-        BLEDevice::getAdvertising()->stop();
-        g_frieshClientConnected = true;
-    }
+    // // disconnecting
+    // if (g_frieshClientConnected && !frieshConnection.isConnected())
+    // {
+    //     Serial.println("start advertising");
+    //     g_frieshClientConnected = false;
+    //     pFrieshServer->startAdvertising(); // restart advertising
+    // }
+    // // connecting
+    // if (!g_frieshClientConnected && frieshConnection.isConnected())
+    // {
+    //     // do stuff here on connecting
+    //     BLEDevice::getAdvertising()->stop();
+    //     g_frieshClientConnected = true;
+    // }
 
     frskyConnection.process();
 
@@ -1048,29 +1052,29 @@ void BLEFrskyConnection::onDisconnect(BLEClient *pClient)
 }
 
 
-BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
-{
-}
+// BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
+// {
+// }
 
-void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
-{
-    // Discard wrongly dispatched Client messages
-    if(param->connect.link_role!=1) return;
+// void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
+// {
+//     // Discard wrongly dispatched Client messages
+//     if(param->connect.link_role!=1) return;
 
-    uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
-    _connected = true;
-    Serial.printf("FrieshClient connected: %012lX\n");
-};
+//     uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
+//     _connected = true;
+//     Serial.printf("FrieshClient connected: %012X\n", addr);
+// };
 
-void BLEFrieshConnection::onDisconnect(BLEServer *pServer)
-{
+// void BLEFrieshConnection::onDisconnect(BLEServer *pServer)
+// {
 
-    if(pServer!=pFrieshServer) return;
-    _connected = false;
-    Serial.println("FrieshClient disconnected...");
-}
+//     if(pServer!=pFrieshServer) return;
+//     _connected = false;
+//     Serial.println("FrieshClient disconnected...");
+// }
 
-bool BLEFrieshConnection::isConnected() 
-{
-    return _connected;
-}
+// bool BLEFrieshConnection::isConnected() 
+// {
+//     return _connected;
+// }
