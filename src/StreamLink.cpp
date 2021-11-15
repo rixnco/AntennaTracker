@@ -25,6 +25,6 @@ int StreamLink::available() {
 void StreamLink::process()
 {
     if(_stream==nullptr) return;
-    if(_stream->available()) fireDataReceivedEvent(_stream->read());
+    while(_stream->available()) fireDataReceivedEvent(_stream->read());
 }
 
