@@ -35,7 +35,7 @@
 #endif
 
 
-#define STEPPER_STEP_PER_REV    (32 * 64 * 8)
+#define STEPPER_STEP_PER_REV    (4076 * 5)
 
 
 // BUTTON Stuff
