@@ -403,7 +403,7 @@ void setup()
         Serial.println("Using default settings...");
     }
     g_home = GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
-    g_target = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
+    g_aim = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
 
     g_trackerMode = TRACKING;
 
@@ -639,8 +639,7 @@ bool loadSettings()
 
 bool isHomed() 
 {
-    if (g_settings.homeLattitude==0 && g_settings.homeLongitude==0 && g_settings.homeElevation==0) return false;
-    return true;
+    return !(g_settings.homeLattitude==0 && g_settings.homeLongitude==0);
 }
 
 void StartupState::enter()

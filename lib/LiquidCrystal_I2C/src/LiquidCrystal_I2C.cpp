@@ -787,7 +787,7 @@ uint8_t LiquidCrystal_I2C::readPCF8574()
   #if defined(_VARIANT_ARDUINO_STM32_)
   Wire.requestFrom(_PCF8574_address, 1);
   #else
-  Wire.requestFrom(static_cast<uint16_t>(_PCF8574_address), 1u, true); //true, stop message after transmission & releas I2C bus
+  Wire.requestFrom(static_cast<uint16_t>(_PCF8574_address), static_cast<uint8_t>(1), true); //true, stop message after transmission & releas I2C bus
   #endif
   if (Wire.available() != 1) return false;     //check "wire.h" rxBuffer & error handler, collision on the i2c bus
 
