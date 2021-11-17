@@ -354,6 +354,8 @@ void setup()
     {
         Serial.println("Using default settings...");
     }
+    g_home = GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
+    g_target = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
 
     // g_frieshClientConnected = false;
     g_frskyConnected = false;
