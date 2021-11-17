@@ -680,14 +680,25 @@ State *TrackingState::run()
 
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
+    static uint64_t lastPidTime = 0;
     uint64_t now = millis();
 
     if (now - _lastProcessTime < 100)
         return this;
 
     _lastProcessTime = now;
-
-    float target_d = g_home.distanceTo(g_target);
+    GeoPt current_target;
+    if (g_trackerMode == AIMING)
+    {
+        current_target = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
+    } else
+    {
+       current_target = g_target;
+    }
+    
+    
+    
+    float target_d = g_home.distanceTo(current_target);
     float current_a = getAzimuth();
 
     if (target_d < 20)
@@ -702,7 +713,14 @@ State *TrackingState::run()
             lastDisplayTime = now;
             display.clear();
             display.setCursor(0, 0);
+            if (g_trackerMode == AIMING)
+        {
+            display.print("aT: ---.-\xF8 --.--km");
+        } else
+        {
             display.print("T: ---.-\xF8 --.--km");
+        }
+            
             display.setCursor(0, 1);
             display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
             display.show();
@@ -710,16 +728,17 @@ State *TrackingState::run()
         return this;
     }
 
-    float target_a = g_home.azimuthTo(g_target);
+    float target_a = g_home.azimuthTo(current_target);
     while (target_a < 0)
         target_a += 360;
     while (target_a >= 360)
         target_a -= 360;
     float error = getHeadingError(current_a, target_a);
     ErrorSmoother.add(error);
-    float speed = ErrorSmoother.get() * 0.1;
+    float speed = ErrorSmoother.get() * 2.2;
+    // float speed = error * 2.2;
 
-    float tilt = g_home.tiltTo(g_target);
+    float tilt = g_home.tiltTo(current_target);
     if (tilt < 0)
         tilt = 0;
 
@@ -728,7 +747,13 @@ State *TrackingState::run()
 
         display.clear();
         display.setCursor(0, 0);
-        display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+        if (g_trackerMode == AIMING)
+        {
+            display.printf("aT: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+        } else
+        {
+            display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+        }
         display.setCursor(0, 1);
         display.printf("A: %3.1f\xF8 %2.1f\xF8", current_a, tilt);
         display.show();
@@ -736,20 +761,26 @@ State *TrackingState::run()
         lastDisplayTime = now;
     }
 
-    float dir = speed >= 0 ? DIR_CW : DIR_CCW;
-    speed = fabs(speed);
-    if (speed > 90)
+    if (now - lastPidTime > 100)
     {
-        speed = 90;
+        if (fabsf(error) < 0.05)
+        {
+            stepper.stop();
+        } else {
+            float dir = speed >= 0 ? DIR_CCW : DIR_CW;
+            speed = fabs(speed);
+            stepper.move(speed, dir);
+
+            if (tilt < SERVO_MIN)
+                tilt = SERVO_MIN;
+            if (tilt > SERVO_MAX)
+                tilt = SERVO_MAX;
+
+            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * tilt));
+        }
+
+        lastPidTime = now;
     }
-    stepper.move(speed, dir);
-
-    if (tilt < SERVO_MIN)
-        tilt = SERVO_MIN;
-    if (tilt > SERVO_MAX)
-        tilt = SERVO_MAX;
-
-    tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * tilt));
 
     if (now - lastDebugTime > 1000)
     {
