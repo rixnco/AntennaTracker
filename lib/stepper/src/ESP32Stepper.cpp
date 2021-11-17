@@ -2,8 +2,7 @@
 #include <soc/mcpwm_reg.h>
 #include <soc/mcpwm_struct.h>
 #include <math.h>
-
-
+#include <Arduino.h>
 
 //#define DEBUG
 
@@ -75,7 +74,7 @@ ESP32Stepper::~ESP32Stepper() {
     detach();
 }
 
-bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint8_t enablePin, uint32_t stepPerRev, bool reverseDir)
+bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint8_t enablePin, uint32_t stepPerRev, float maxSpeed, bool reverseDir)
 {
     if(_instance!=nullptr) {
         // Already attached.
@@ -100,6 +99,7 @@ bool ESP32Stepper::attach(uint8_t stepPin, uint8_t dirPin, uint8_t enablePin, ui
     _enablePin = enablePin;
     _stepPerRev = stepPerRev;
     _reverseDir = reverseDir;
+    _maxSpeed = maxSpeed;
 
     gpio_config_t conf;
     conf.pin_bit_mask = 1 << _dirPin;
@@ -170,6 +170,8 @@ void ESP32Stepper::detach() {
     _dirPin = 0;
     _enablePin = 0;
     _stepPerRev = 0;
+    _lastFreq = 0;
+    _maxSpeed = 0;
     _reverseDir = false;
     _stepCallback = nullptr;
     _stopCallback = nullptr;
@@ -189,18 +191,27 @@ void ESP32Stepper::move(float speed, float angle)
 {
     if(_instance==nullptr) return;
     
-    stop();
+    // stop();
     if (speed <= 0 ) {
         return;
     }
-
+    if (_maxSpeed > 0 && speed > _maxSpeed)
+    {
+        speed = _maxSpeed;
+    }
+    
     uint32_t freq = (uint32_t)(speed * _stepPerRev / 360.f);
-    if(freq==0) {
+    if (freq == _lastFreq)
+    {
         return;
     }
-
+    
+    if(freq==0) {
+        stop();
+        return;
+    }
+    _lastFreq = freq;
     _speed = speed;
-
     gpio_set_level((gpio_num_t)_enablePin, 0);
     bool dir= !_reverseDir;
     dir= angle<0?!dir:dir;

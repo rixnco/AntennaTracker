@@ -410,7 +410,7 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring stepper...");
-    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV))
+    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV, 22))
     {
         Serial.println("...FAIL");
         while (true)
