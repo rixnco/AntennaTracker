@@ -19,7 +19,7 @@ public:
     BLERemoteFrskyStream();
     ~BLERemoteFrskyStream();
 
-    bool setRemoteService(BLERemoteService *pService);
+    bool setFrskyService(BLERemoteService *pService);
 
     // Stream
     inline int available() { return _rxlen; };
@@ -36,7 +36,7 @@ protected:
     void received(const uint8_t *pData, size_t len);
 
 private:
-    BLERemoteService *_frskyService;
+    BLERemoteService        *_frskyService;
     BLERemoteCharacteristic *_frskyCharacteristic;
 
     FreeRTOS::Semaphore _rxSemaphore   = FreeRTOS::Semaphore("RX");
