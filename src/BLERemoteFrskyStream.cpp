@@ -21,16 +21,19 @@ BLERemoteFrskyStream::~BLERemoteFrskyStream()
     if(_frskyCharacteristic) _frskyCharacteristic->registerForNotify(nullptr);
 };
 
-bool BLERemoteFrskyStream::setRemoteService(BLERemoteService *pService)
+bool BLERemoteFrskyStream::setFrskyService(BLERemoteService *pService)
 {
+
     if (pService == nullptr)
     {
         // Disconnecting from client
-        if(_frskyCharacteristic) _frskyCharacteristic->registerForNotify(nullptr);
+        Serial.println("Unregistering notifications");
+        if(_frskyCharacteristic && _frskyCharacteristic->getRemoteService()->getClient()->isConnected()) _frskyCharacteristic->registerForNotify(nullptr);
+        _frskyCharacteristic = nullptr;
         _frskyService = nullptr;
         return true;
     }
-
+    Serial.println("Registering for notifications");
     _frskyService = pService;
     // Obtain a reference to the characteristics in the service of the remote BLE server.
     _frskyCharacteristic = nullptr;
@@ -41,6 +44,7 @@ bool BLERemoteFrskyStream::setRemoteService(BLERemoteService *pService)
         //Serial.println(pChar->getUUID().toString().c_str());
         if (pChar->getUUID().equals(FRSKY_STREAM_RX_CHARACTERISTIC_UUID))
         {
+            Serial.println("Found frsky RX characteristic");
             _frskyCharacteristic = pChar;
             break;
         }
@@ -55,6 +59,7 @@ bool BLERemoteFrskyStream::setRemoteService(BLERemoteService *pService)
     } 
     else 
     {
+        Serial.println("registered for notifications");
         flush();
         _frskyCharacteristic->registerForNotify(notifyCallback, true, true, this);
     }
@@ -124,7 +129,6 @@ void BLERemoteFrskyStream::notifyCallback(
     bool isNotify,
     void *param)
 {
-
     if (param != nullptr)
     {
         ((BLERemoteFrskyStream *)param)->received(pData, length);

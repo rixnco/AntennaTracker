@@ -7,6 +7,8 @@ const char *PARAM_NAME[] = {
     "TILT",
     "TRACKING"};
 
+
+
 static int getParamID(const char *str, char **endptr);
 
 FrieshHandler::~FrieshHandler()

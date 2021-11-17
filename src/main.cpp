@@ -32,6 +32,10 @@
 #define SETTINGS_VERSION        100
 #define SETTINGS_MAX_NAME_LEN   15
 
+
+//#define FRIESH_SERVER_ENABLED
+
+
 //--------------------------------------
 //              Types
 //--------------------------------------
@@ -86,6 +90,48 @@ class TelemetryHandler : public TelemetryListener
     virtual void onRollData(TelemetryDecoder *decoder, float rollAngle) override;
     virtual void onPitchData(TelemetryDecoder *decoder, float pitchAngle) override;
     virtual void onAirSpeedData(TelemetryDecoder *decoder, float speed) override;
+
+    inline uint32_t getDecodedFrames() { return _decodedFrames; }
+    inline uint32_t getDecodingError() { return _decodingErrors; }
+    inline GeoPt    getGPS() { return _gps; }
+    inline uint16_t getSatellites() { return _satellites; }
+    inline bool     hasFix() { return _fix; }
+    inline float    getSpeed() { return _speed; }
+    inline int      getFuel() { return _fuel; }
+    inline float    getVBat() { return _vbat; }
+    inline float    getVCell() { return _vcell; }
+    inline float    getCurrent() { return _current; }
+    inline float    getHeading() { return _heading; }
+    inline int      getRSSI() { return _rssi; }
+    inline float    getRxBt() { return _rxbt; }
+    inline float    getVSpeed() { return _vspeed; }
+    inline float    getAltitude() { return _altitude; }
+    inline int      getDistance() { return _distance; }
+    inline float    getRoll() { return _roll; }
+    inline float    getPitch() { return _pitch; }
+    inline float    getAirSpeed() { return _airspeed; }
+
+    private:
+        uint32_t    _decodedFrames;
+        uint32_t    _decodingErrors;
+        GeoPt       _gps;
+        uint16_t    _satellites; 
+        bool        _fix;
+        float       _galt;
+        float       _speed;
+        int         _fuel;
+        float       _vbat;
+        float       _vcell;
+        float       _current;
+        float       _heading;
+        int         _rssi;
+        float       _rxbt;
+        float       _vspeed;
+        float       _altitude;
+        int         _distance;
+        float       _roll;
+        float       _pitch;
+        float       _airspeed;
 };
 
 //-----------------------------------------------------------------------------------------
@@ -157,20 +203,20 @@ protected:
     bool       _connected;
 }; // BLEFrskyClient
 
+#ifdef FRIESH_SERVER_ENABLED
+class BLEFrieshConnection : public BLEServerCallbacks
+{
+public:
+    BLEFrieshConnection();
 
-// class BLEFrieshConnection : public BLEServerCallbacks
-// {
-// public:
-//     BLEFrieshConnection();
+    void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
+    void onDisconnect(BLEServer *pServer) override;
 
-//     void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
-//     void onDisconnect(BLEServer *pServer) override;
-
-//     bool isConnected();
-// protected:
-//     bool _connected;
-// };
-
+    bool isConnected();
+protected:
+    bool _connected;
+};
+#endif
 
 
 //-----------------------------------------------------------------------------------------
@@ -260,12 +306,13 @@ bool wire_ping(uint8_t addr);
 //            Variables
 //--------------------------------------
 
+#ifdef FRIESH_SERVER_ENABLED
+BLEServer               *pFrieshServer;
+BLEFrieshConnection     frieshConnection;
+bool                    g_frieshClientConnected = false;
+#endif
+Stream                  *pFrieshStream;
 
-// BLEServer               *pFrieshServer;
-// BLEFrieshConnection     frieshConnection;
-// bool                    g_frieshClientConnected = false;
-// BLEFrieshStream         *pFrieshStream;
-Stream                     *pFrieshStream;
 
 
 BLEFrskyConnection      frskyConnection;
@@ -277,6 +324,7 @@ BLERemoteFrskyStream    *pFrskyStream;
 settings_t g_settings;
 
 
+GeoPt   g_aim;
 GeoPt   g_home;
 GeoPt   g_target;
 bool    g_gpsFix = false;
@@ -355,8 +403,6 @@ void setup()
         Serial.println("Using default settings...");
     }
 
-    // g_frieshClientConnected = false;
-    g_frskyConnected = false;
     g_trackerMode = TRACKING;
 
     ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
@@ -389,12 +435,15 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring the friesh link");
-    // Initializes the BLE Stream server
-    // pFrieshServer = BLEDevice::createServer();
-    // pFrieshServer->setCallbacks(&frieshConnection);
-    // pFrieshStream= new BLEFrieshStream(pFrieshServer);
+    #ifdef FRIESH_SERVER_ENABLED
+    // Initializes the Friesh Stream server
+    pFrieshServer = BLEDevice::createServer();
+    pFrieshServer->setCallbacks(&frieshConnection);
+    pFrieshStream= new BLEFrieshStream(pFrieshServer);
+    #else
     Serial2.begin(115200);
     pFrieshStream = &Serial2;
+    #endif
 
     frieshFrieshDecoder.setFrieshHandler(&frieshHandler);
     frieshFrieshDecoder.setOutputStream(pFrieshStream);
@@ -427,9 +476,6 @@ void setup()
     }
     Serial.println("...OK");
 
-    // tiltServo.write(SERVO_ZERO_OFFSET+ (SERVO_DIRECTION*SERVO_MAX));
-    // while(!isButtonPressed()) {}
-    // while(isButtonPressed()) {}
     tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * 0));
 
     // Scan I2C bus
@@ -470,16 +516,21 @@ void setup()
     display.show();
 
 
-    // // Start advertising
-    // Serial.print("Advertising the friesh Server");
-    // BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    // pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
-    // pAdvertising->setScanResponse(true);
-    // pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
-    // delay(500);
-    // BLEDevice::startAdvertising();
-    // Serial.println("...OK");
+    // Start advertising
+    #ifdef FRIESH_SERVER_ENABLED
+    g_frieshClientConnected = false;
+    delay(500);
+    Serial.print("Advertising the friesh Server");
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(FRIESH_SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x0); // set value to 0x00 to not advertise this parameter
+    BLEDevice::startAdvertising();
+    Serial.println("...OK");
+    #endif
 
+    delay(200);
+    g_frskyConnected = false;
     Serial.println("Scanning for a Frsky telemetry connection");
     // Retrieve a Scanner and set the callback we want to use to be informed when we
     // have detected a new device.  Specify that we want active scanning and start the
@@ -489,7 +540,6 @@ void setup()
     pBLEScan->setInterval(1349);
     pBLEScan->setWindow(449);
     pBLEScan->setActiveScan(true);
-    delay(200);
     pBLEScan->start(-1, nullptr, false);
 
     Serial.println("AntennaTracker started...");
@@ -498,20 +548,23 @@ void setup()
 
 void loop()
 {
-    // // disconnecting
-    // if (g_frieshClientConnected && !frieshConnection.isConnected())
-    // {
-    //     Serial.println("start advertising");
-    //     g_frieshClientConnected = false;
-    //     pFrieshServer->startAdvertising(); // restart advertising
-    // }
-    // // connecting
-    // if (!g_frieshClientConnected && frieshConnection.isConnected())
-    // {
-    //     // do stuff here on connecting
-    //     BLEDevice::getAdvertising()->stop();
-    //     g_frieshClientConnected = true;
-    // }
+    #ifdef FRIESH_SERVER_ENABLED
+    // disconnecting
+    if (g_frieshClientConnected && !frieshConnection.isConnected())
+    {
+        Serial.println("start advertising");
+        g_frieshClientConnected = false;
+        pFrieshServer->startAdvertising(); // restart advertising
+    }
+    // connecting
+    if (!g_frieshClientConnected && frieshConnection.isConnected())
+    {
+        Serial.println("Stop advertising");
+        // do stuff here on connecting
+        BLEDevice::getAdvertising()->stop();
+        g_frieshClientConnected = true;
+    }
+    #endif
 
     frskyConnection.process();
 
@@ -808,85 +861,108 @@ float g_GAlt;
 uint32_t tlm_dbg_idx = 0;
 void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
-    g_gpsFix = true;
-    g_target = GeoPt(latitude, longitude, g_GAlt);
-    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, g_GAlt);
+    _fix = true;
+    _gps = GeoPt(latitude, longitude, _altitude);
+
+    g_gpsFix = _fix;
+    g_target =  _gps;
+
+    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, _altitude);
 }
 void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
+    _fix = gpsFix;
+    _satellites = satellites;
+
     g_gpsFix = gpsFix;
     g_gpsSatellites = satellites;
     //    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
 }
 void TelemetryHandler::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
-    g_GAlt = altitude;
+    _galt = altitude;
+    //    g_GAlt = altitude;
     //    Serial.printf("GAlt       : %.2fm\n", altitude);
 }
 void TelemetryHandler::onGSpeedData(TelemetryDecoder *decoder, float speed)
 {
+    _speed = speed;
     //    Serial.printf("GSpeed     : %.2fm/s\n", speed);
 }
 
-void TelemetryHandler::onFrameDecoded(TelemetryDecoder *decoder, uint32_t id)
-{
-    // Do nothing
-    //    Serial.printf("received %02X\n", id);
+void TelemetryHandler::onFrameDecoded(TelemetryDecoder* decoder, uint32_t id) {
+//    Serial.printf("[%s] - %d\n", decoder->getName().c_str(), id);
+    ++_decodedFrames;
 }
+
 void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
 {
-    Serial.printf("[%s] Frame error: %d - 0x%X\n", decoder->getName().c_str(), error, param);
+    ++_decodingErrors;
+//    Serial.printf("[%s] Frame error: %d - 0x%X\n", decoder->getName().c_str(), error, param);
 }
 void TelemetryHandler::onFuelData(TelemetryDecoder *decoder, int fuel)
 {
+    _fuel = fuel;
     // Serial.printf("Fuel       : %d\n", fuel);
 }
 void TelemetryHandler::onVBATData(TelemetryDecoder *decoder, float voltage)
 {
+    _vbat = voltage;
     // Serial.printf("VBat       : %.2fV\n", voltage);
 }
 void TelemetryHandler::onCellVoltageData(TelemetryDecoder *decoder, float voltage)
 {
+    _vcell = voltage;
     // Serial.printf("Cell       : %.2fV\n", voltage);
 }
 void TelemetryHandler::onCurrentData(TelemetryDecoder *decoder, float current)
 {
+    _current = current;
     // Serial.printf("Current    : %.2fA\n", current);
 }
 void TelemetryHandler::onHeadingData(TelemetryDecoder *decoder, float heading)
 {
+    _heading = heading;
     // Serial.printf("Heading    : %.2f\xF8\n", heading);
 }
 void TelemetryHandler::onRSSIData(TelemetryDecoder *decoder, int rssi)
 {
+    _rssi = rssi;
     // Serial.printf("Rssi       : %ddB\n", rssi);
 }
 void TelemetryHandler::onRxBtData(TelemetryDecoder *decoder, float voltage)
 {
+    _rxbt = voltage;
     // Serial.printf("RxBt       : %.2fV\n", voltage);
 }
 void TelemetryHandler::onVSpeedData(TelemetryDecoder *decoder, float vspeed)
 {
+    _vspeed= vspeed;
     // Serial.printf("VSpeed     : %.2fm/s\n", vspeed);
 }
 void TelemetryHandler::onAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
+    _altitude = altitude;
     // Serial.printf("Altitude   : %.2fm\n", altitude);
 }
 void TelemetryHandler::onDistanceData(TelemetryDecoder *decoder, int distance)
 {
+    _distance = distance;
     // Serial.printf("Distance   : %.2dm\n", distance);
 }
 void TelemetryHandler::onRollData(TelemetryDecoder *decoder, float rollAngle)
 {
+    _roll = rollAngle;
     // Serial.printf("Roll       : %.2f\xF8\n", rollAngle);
 }
 void TelemetryHandler::onPitchData(TelemetryDecoder *decoder, float pitchAngle)
 {
+    _pitch = pitchAngle;
     // Serial.printf("Pitch      : %.2f\xF8\n", pitchAngle);
 }
 void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
 {
+    _airspeed = speed;
     // Serial.printf("AirSpeed   : %.2fm/s\n", speed);
 }
 
@@ -897,6 +973,7 @@ void  MyFrieshHandler::setHome(float lat, float lon, float elv)
     g_settings.homeLattitude = lat;
     g_settings.homeLongitude = lon;
     g_settings.homeElevation = elv;
+    g_home= GeoPt(lat,lon,elv);
 }
 float MyFrieshHandler::getHomeLatitude() 
 {
@@ -916,6 +993,7 @@ void  MyFrieshHandler::setAim(float lat, float lon, float elv)
     g_settings.aimLattitude = lat;
     g_settings.aimLongitude = lon;
     g_settings.aimElevation = elv;
+    g_aim= GeoPt(lat,lon,elv);
 }
 float MyFrieshHandler::getAimLatitude() 
 {
@@ -1030,13 +1108,14 @@ void BLEFrskyConnection::process()
                       (uint8_t)(_address >> 8),
                       (uint8_t)(_address));
         
-        if (connect(BLEAddress((uint8_t*)&_address)))
+        if(connect(BLEAddress((uint8_t*)&_address)))
         {
+            _connected = pFrskyStream->setFrskyService(this->getService(FRSKY_STREAM_SERVICE_UUID));
+        }
+        if(_connected) {
             Serial.println("BLEFrskyStream connected ...OK");
-            _connected = true;
         } else {
             _address=0;
-            _connected = false;
             Serial.println("BLEFrskyStream connection ...Failed");
         }
         return;
@@ -1046,7 +1125,7 @@ void BLEFrskyConnection::process()
     {
         // Do disconnect
         Serial.println("BLEFrskyStream disconnected");
-        pFrskyStream->setRemoteService(nullptr);
+        pFrskyStream->setFrskyService(nullptr);
         _connected = false;
         _address=0;
         Serial.println("Start scanning...");
@@ -1064,30 +1143,26 @@ void BLEFrskyConnection::onDisconnect(BLEClient *pClient)
     _address = 0;
 }
 
+#ifdef FRIESH_SERVER_ENABLED
+BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
+{
+}
 
-// BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
-// {
-// }
+void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
+{
+    uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
+    _connected = true;
+    Serial.printf("FrieshClient connected: %012X\n", addr);
+};
 
-// void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
-// {
-//     // Discard wrongly dispatched Client messages
-//     if(param->connect.link_role!=1) return;
+void BLEFrieshConnection::onDisconnect(BLEServer *pServer)
+{
+    _connected = false;
+    Serial.println("FrieshClient disconnected...");
+}
 
-//     uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
-//     _connected = true;
-//     Serial.printf("FrieshClient connected: %012X\n", addr);
-// };
-
-// void BLEFrieshConnection::onDisconnect(BLEServer *pServer)
-// {
-
-//     if(pServer!=pFrieshServer) return;
-//     _connected = false;
-//     Serial.println("FrieshClient disconnected...");
-// }
-
-// bool BLEFrieshConnection::isConnected() 
-// {
-//     return _connected;
-// }
+bool BLEFrieshConnection::isConnected() 
+{
+    return _connected;
+}
+#endif

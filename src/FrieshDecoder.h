@@ -1,6 +1,7 @@
 #ifndef __FRIESH_DECODER_H__
 #define __FRIESH_DECODER_H__
 
+//#include <GeoUtils.h>
 #include <ProtocolDecoder.h>
 #include <Print.h>
 
@@ -47,6 +48,29 @@ public:
 
     virtual bool storeSettings() = 0;
     virtual bool loadSettings() = 0;
+
+
+    // virtual uint32_t getDecodedFrames() = 0;
+    // virtual uint32_t getDecodingError() = 0;
+    // virtual GeoPt    getGPS() = 0;
+    // virtual uint16_t getSatellites() = 0;
+    // virtual bool     hasFix() = 0;
+    // virtual float    getSpeed() = 0;
+    // virtual int      getFuel() = 0;
+    // virtual float    getVBat() = 0;
+    // virtual float    getVCell() = 0;
+    // virtual float    getCurrent() = 0;
+    // virtual float    getHeading() = 0;
+    // virtual int      getRSSI() = 0;
+    // virtual float    getRxBt() = 0;
+    // virtual float    getVSpeed() = 0;
+    // virtual float    getAltitude() = 0;
+    // virtual int      getDistance() = 0;
+    // virtual float    getRoll() = 0;
+    // virtual float    getPitch() = 0;
+    // virtual float    getAirSpeed() = 0;
+
+
 };
 
 class FrieshDecoder : public ProtocolDecoder {
