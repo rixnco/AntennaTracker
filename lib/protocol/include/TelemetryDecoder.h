@@ -2,7 +2,31 @@
 #define __TELEMETRY_DECODER_H__
 
 #include "ProtocolDecoder.h"
+#include <GeoUtils.h>
 #include <stdint.h>
+
+class TelemetryProvider {
+public:
+    virtual ~TelemetryProvider() {};
+    virtual GeoPt    getGPS() = 0;
+    virtual uint16_t getSatellites() = 0;
+    virtual bool     hasFix() = 0;
+    virtual float    getSpeed() = 0;
+    virtual int      getFuel() = 0;
+    virtual float    getVBat() = 0;
+    virtual float    getVCell() = 0;
+    virtual float    getCurrent() = 0;
+    virtual float    getHeading() = 0;
+    virtual int      getRSSI() = 0;
+    virtual float    getRxBt() = 0;
+    virtual float    getVSpeed() = 0;
+    virtual float    getAltitude() = 0;
+    virtual int      getDistance() = 0;
+    virtual float    getRoll() = 0;
+    virtual float    getPitch() = 0;
+    virtual float    getAirSpeed() = 0;
+};
+
 
 enum TelemetryError { TLM_ERROR_CRC, TLM_ERROR_OVERFLOW, TLM_ERROR_UNKNOWN_ID, TLM_ERROR_BAD_FORMAT };
 
