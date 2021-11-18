@@ -23,7 +23,7 @@
 #define BTN_PIN                 23
 #define LED1_PIN                2
 
-#define SERVO_PIN               25
+#define SERVO_PIN               33
 #define STEPPER_DIR_PIN         26
 #define STEPPER_STEP_PIN        27
 #define STEPPER_ENA_PIN         14

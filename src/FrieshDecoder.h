@@ -1,105 +1,49 @@
 #ifndef __FRIESH_DECODER_H__
 #define __FRIESH_DECODER_H__
 
-//#include <GeoUtils.h>
+#include <Settings.h>
 #include <ProtocolDecoder.h>
+#include <TelemetryDecoder.h>
 #include <Print.h>
 
 #define FRIESH_BUFFER_SIZE 63
-#define FRIESH_PARAM_REQ '$'
-
-// Configuration parameters ID
-// Used by the protocol handler
-#define PARAM_HOME      0
-#define PARAM_AIM       1
-#define PARAM_PAN       2
-#define PARAM_TILT      3
-#define PARAM_TRACKING  4
-#define PARAM_LAST      5
-
-extern const char *PARAM_NAME[];
 
 class FrieshDecoder;
-
-class FrieshHandler {
-public:
-    virtual ~FrieshHandler();
- 
-    virtual void  setHome(float lat, float lon, float elv) = 0;
-    virtual float getHomeLatitude()= 0;
-    virtual float getHomeLongitude()= 0;
-    virtual float getHomeElevation()= 0;
-
-    virtual void  setAim(float lat, float lon, float elv) = 0;
-    virtual float getAimLatitude() = 0;
-    virtual float getAimLongitude() = 0;
-    virtual float getAimElevation() = 0;
-
-    virtual void setTracking(bool tracking) = 0;
-    virtual bool isTracking() = 0;
-
-    virtual void setPanOffset(int pan) = 0;
-    virtual void adjPanOffset(int16_t delta) = 0;
-    virtual int  getPanOffset() = 0;
-
-    virtual void setTiltOffset(int pan) = 0;
-    virtual void adjTiltOffset(int16_t delta) = 0;
-    virtual int  getTiltOffset() = 0;
-
-    virtual bool storeSettings() = 0;
-    virtual bool loadSettings() = 0;
-
-
-    // virtual uint32_t getDecodedFrames() = 0;
-    // virtual uint32_t getDecodingError() = 0;
-    // virtual GeoPt    getGPS() = 0;
-    // virtual uint16_t getSatellites() = 0;
-    // virtual bool     hasFix() = 0;
-    // virtual float    getSpeed() = 0;
-    // virtual int      getFuel() = 0;
-    // virtual float    getVBat() = 0;
-    // virtual float    getVCell() = 0;
-    // virtual float    getCurrent() = 0;
-    // virtual float    getHeading() = 0;
-    // virtual int      getRSSI() = 0;
-    // virtual float    getRxBt() = 0;
-    // virtual float    getVSpeed() = 0;
-    // virtual float    getAltitude() = 0;
-    // virtual int      getDistance() = 0;
-    // virtual float    getRoll() = 0;
-    // virtual float    getPitch() = 0;
-    // virtual float    getAirSpeed() = 0;
-
-
-};
 
 class FrieshDecoder : public ProtocolDecoder {
 public:
     FrieshDecoder();
+    FrieshDecoder(SettingsManager *settings, TelemetryProvider* telemetry);
     virtual ~FrieshDecoder();
 
     void setOutputStream(Print* out);
-    void setFrieshHandler(FrieshHandler* handler);
+    void setSettingsManager(SettingsManager* settings);
+    void setTelemetryProvider(TelemetryProvider* telemetry);
     virtual void reset();
     virtual void process(uint8_t data);
 
 
 protected:
-    bool decodeFrame();
-    bool decodeParamRequest();
+    bool decodeCommand();
+    bool decodeSettingRequest();
+    bool decodeTelemetryRequest();
 
     void sendAck();
     void sendError(const char *msg);
-    void sendParam(int p);
     void sendSettings();
-    bool setParam(int p, char *ptr);
-    bool adjParam(int p, char *ptr);
+    void sendSetting(int p);
+    bool setSetting(int p, char *ptr);
+    bool adjSetting(int p, char *ptr);
 
-    Print    *_out;
+    void sendTelemetries();
+    void sendTelemetry(int p);
+
     char     _buffer[FRIESH_BUFFER_SIZE+1];
     uint32_t _index;
+    Print    *_out;
     
-    FrieshHandler* _handler;
+    SettingsManager*    _settings;
+    TelemetryProvider*  _telemetry;
 };
 
 

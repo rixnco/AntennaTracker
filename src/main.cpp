@@ -1,7 +1,6 @@
 
 #include <Arduino.h>
 
-#include <EEPROM.h>
 #include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
@@ -16,24 +15,25 @@
 #include "BLERemoteFrskyStream.h"
 #include "StreamLink.h"
 #include "Smoothed.h"
+#include "Settings.h"
 #include "BLEFrieshStream.h"
-
 #include "AS5600.h"
+
+//--------------------------------------
+//              CONFIG
+//--------------------------------------
+
+//#define FRIESH_SERVER_ENABLED
+
+
 
 //--------------------------------------
 //              DEFINES
 //--------------------------------------
 
-#define EEPROM_SIZE 256
 
 #define ARRAY_LEN(a) (sizeof(a) / sizeof(a[0]))
 
-#define SETTINGS_MAGIC          0xDEADBEEF
-#define SETTINGS_VERSION        100
-#define SETTINGS_MAX_NAME_LEN   15
-
-
-//#define FRIESH_SERVER_ENABLED
 
 
 //--------------------------------------
@@ -41,33 +41,22 @@
 //--------------------------------------
 
 
-typedef struct
-{
-    uint32_t magic;
-    uint32_t version;
 
-    float homeLattitude;
-    float homeLongitude;
-    float homeElevation;
-    char  homeName[SETTINGS_MAX_NAME_LEN+1];
 
-    float aimLattitude;
-    float aimLongitude;
-    float aimElevation;
-    char  aimName[SETTINGS_MAX_NAME_LEN+1];
 
-    int32_t panOffset;
-    int32_t tiltOffset;
-    
-} settings_t;
 
-enum trackerMode_t { TRACKING, AIMING };
 
 //-----------------------------------------------------------------------------------------
 // Telemetry stuff
 //-----------------------------------------------------------------------------------------
-class TelemetryHandler : public TelemetryListener
+
+
+
+class TelemetryManager : public TelemetryProvider, public TelemetryListener
 {
+public:
+    virtual ~TelemetryManager() {};
+
     // GPS Telemetry ...
     virtual void onGPSData(TelemetryDecoder *decoder, float latitude, float longitude) override;
     virtual void onGPSAltitudeData(TelemetryDecoder *decoder, float altitude) override;
@@ -91,78 +80,87 @@ class TelemetryHandler : public TelemetryListener
     virtual void onPitchData(TelemetryDecoder *decoder, float pitchAngle) override;
     virtual void onAirSpeedData(TelemetryDecoder *decoder, float speed) override;
 
+    // Metrics
     inline uint32_t getDecodedFrames() { return _decodedFrames; }
     inline uint32_t getDecodingError() { return _decodingErrors; }
-    inline GeoPt    getGPS() { return _gps; }
-    inline uint16_t getSatellites() { return _satellites; }
-    inline bool     hasFix() { return _fix; }
-    inline float    getSpeed() { return _speed; }
-    inline int      getFuel() { return _fuel; }
-    inline float    getVBat() { return _vbat; }
-    inline float    getVCell() { return _vcell; }
-    inline float    getCurrent() { return _current; }
-    inline float    getHeading() { return _heading; }
-    inline int      getRSSI() { return _rssi; }
-    inline float    getRxBt() { return _rxbt; }
-    inline float    getVSpeed() { return _vspeed; }
-    inline float    getAltitude() { return _altitude; }
-    inline int      getDistance() { return _distance; }
-    inline float    getRoll() { return _roll; }
-    inline float    getPitch() { return _pitch; }
-    inline float    getAirSpeed() { return _airspeed; }
 
-    private:
-        uint32_t    _decodedFrames;
-        uint32_t    _decodingErrors;
-        GeoPt       _gps;
-        uint16_t    _satellites; 
-        bool        _fix;
-        float       _galt;
-        float       _speed;
-        int         _fuel;
-        float       _vbat;
-        float       _vcell;
-        float       _current;
-        float       _heading;
-        int         _rssi;
-        float       _rxbt;
-        float       _vspeed;
-        float       _altitude;
-        int         _distance;
-        float       _roll;
-        float       _pitch;
-        float       _airspeed;
+    // Telemetry
+    inline GeoPt    getGPS() override { return _gps; }
+    inline uint16_t getSatellites() override { return _satellites; }
+    inline bool     hasFix() override { return _fix; }
+    inline float    getSpeed() override  { return _speed; }
+    inline int      getFuel() override { return _fuel; }
+    inline float    getVBat() override { return _vbat; }
+    inline float    getVCell() override { return _vcell; }
+    inline float    getCurrent() override { return _current; }
+    inline float    getHeading() override { return _heading; }
+    inline int      getRSSI() override { return _rssi; }
+    inline float    getRxBt() override { return _rxbt; }
+    inline float    getVSpeed() override { return _vspeed; }
+    inline float    getAltitude() override { return _altitude; }
+    inline int      getDistance() override { return _distance; }
+    inline float    getRoll() override { return _roll; }
+    inline float    getPitch() override { return _pitch; }
+    inline float    getAirSpeed() override { return _airspeed; }
+
+private:
+    uint32_t    _decodedFrames;
+    uint32_t    _decodingErrors;
+    GeoPt       _gps;
+    uint16_t    _satellites; 
+    bool        _fix;
+    float       _galt;
+    float       _speed;
+    int         _fuel;
+    float       _vbat;
+    float       _vcell;
+    float       _current;
+    float       _heading;
+    int         _rssi;
+    float       _rxbt;
+    float       _vspeed;
+    float       _altitude;
+    int         _distance;
+    float       _roll;
+    float       _pitch;
+    float       _airspeed;
+
 };
 
 //-----------------------------------------------------------------------------------------
 // Friesh protocol stuff
 //-----------------------------------------------------------------------------------------
-class MyFrieshHandler : public FrieshHandler {
-public:
-    virtual void  setHome(float lat, float lon, float elv) override;
-    virtual float getHomeLatitude() override;
-    virtual float getHomeLongitude() override;
-    virtual float getHomeElevation() override;
+// class MyFrieshHandler : public FrieshHandler {
+// public:
+//     MyFrieshHandler(Telemetry* pTelemetry);
+//     virtual ~MyFrieshHandler();
 
-    virtual void  setAim(float lat, float lon, float elv) override;
-    virtual float getAimLatitude() override;
-    virtual float getAimLongitude() override;
-    virtual float getAimElevation() override;
+//     virtual void  setHome(float lat, float lon, float elv) override;
+//     virtual float getHomeLatitude() override;
+//     virtual float getHomeLongitude() override;
+//     virtual float getHomeElevation() override;
 
-    virtual void setTracking(bool tracking) override;
-    virtual bool isTracking() override;
+//     virtual void  setCalib(float lat, float lon, float elv) override;
+//     virtual float getCalibLatitude() override;
+//     virtual float getCalibLongitude() override;
+//     virtual float getCalibElevation() override;
 
-    virtual void setPanOffset(int pan) override;
-    virtual void adjPanOffset(int16_t delta) override;
-    virtual int  getPanOffset() override;
+//     virtual void setTracking(bool tracking) override;
+//     virtual bool isTracking() override;
 
-    virtual void setTiltOffset(int pan) override;
-    virtual void adjTiltOffset(int16_t delta) override;
-    virtual int  getTiltOffset() override;
+//     virtual void setPanOffset(int pan) override;
+//     virtual void adjPanOffset(int16_t delta) override;
+//     virtual int  getPanOffset() override;
 
-    virtual bool storeSettings() override;
-    virtual bool loadSettings() override;
-};
+//     virtual void setTiltOffset(int pan) override;
+//     virtual void adjTiltOffset(int16_t delta) override;
+//     virtual int  getTiltOffset() override;
+
+//     virtual bool storeSettings() override;
+//     virtual bool loadSettings() override;
+// private:
+//     Telemetry *_pTelemetry;
+// };
 
 //-----------------------------------------------------------------------------------------
 // BLEDataHandler stuff
@@ -293,12 +291,6 @@ float getAzimuth();
 float getHeadingError(float current_heading, float target_heading);
 
 
-bool storeSettings();
-void resetSettings();
-bool loadSettings();
-bool isHomed();
-
-
 bool wire_ping(uint8_t addr);
 
 
@@ -321,24 +313,16 @@ BLERemoteFrskyStream    *pFrskyStream;
 
 
 
-settings_t g_settings;
 
 
-GeoPt   g_aim;
-GeoPt   g_home;
-GeoPt   g_target;
-bool    g_gpsFix = false;
-int     g_gpsSatellites;
-
-trackerMode_t g_trackerMode;
-
+TelemetryManager        telemetry;
 
 CRSFDecoder             frskyCRSFDecoder;
 SPortDecoder            frskySPortDecoder;
 BLEDataHandler          frskyDataHandler(2);
 StreamLink              frskyLink;
 
-FrieshDecoder           serialFrieshDecoder;
+FrieshDecoder           serialFrieshDecoder(&Settings, &telemetry);
 CRSFDecoder             serialCRSFDecoder;
 SPortDecoder            serialSPortDecoder;
 DataHandler             serialDataHandler(3);
@@ -346,12 +330,10 @@ StreamLink              serialLink;
 
 SPortDecoder            frieshSPortDecoder;
 CRSFDecoder             frieshCRSFDecoder;
-FrieshDecoder           frieshFrieshDecoder;
+FrieshDecoder           frieshFrieshDecoder(&Settings, &telemetry);
 DataHandler             frieshDataHandler(3);
 StreamLink              frieshLink;
 
-TelemetryHandler telemetryHandler;
-MyFrieshHandler frieshHandler;
 
 ESP32Stepper stepper;
 Servo tiltServo;
@@ -388,7 +370,6 @@ uint16_t g_tracking_profile[] = {
 
 void setup()
 {
-    EEPROM.begin(EEPROM_SIZE);
 
 
     Serial.begin(115200);
@@ -398,22 +379,19 @@ void setup()
 
     btnInit();
     ledInit();
-    if(!loadSettings())
+    Settings.init();
+    if(!Settings.load())
     {
         Serial.println("Using default settings...");
     }
-    g_home = GeoPt(g_settings.homeLattitude, g_settings.homeLongitude, g_settings.homeElevation);
-    g_aim = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
-
-    g_trackerMode = TRACKING;
 
     ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
 
     Serial.print("Configuring the telemetry link");
     pFrskyStream = new BLERemoteFrskyStream();
    
-    frskyCRSFDecoder.setTelemetryListener(&telemetryHandler);
-    frskySPortDecoder.setTelemetryListener(&telemetryHandler);
+    frskyCRSFDecoder.setTelemetryListener(&telemetry);
+    frskySPortDecoder.setTelemetryListener(&telemetry);
    
     frskyDataHandler.addDecoder(&frskyCRSFDecoder);
     frskyDataHandler.addDecoder(&frskySPortDecoder);
@@ -423,10 +401,9 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring the serial link");
-    serialFrieshDecoder.setFrieshHandler(&frieshHandler);
     serialFrieshDecoder.setOutputStream(&Serial);
-    serialCRSFDecoder.setTelemetryListener(&telemetryHandler);
-    serialSPortDecoder.setTelemetryListener(&telemetryHandler);
+    serialCRSFDecoder.setTelemetryListener(&telemetry);
+    serialSPortDecoder.setTelemetryListener(&telemetry);
 
     serialDataHandler.addDecoder(&serialFrieshDecoder);
     serialDataHandler.addDecoder(&serialCRSFDecoder);
@@ -447,10 +424,9 @@ void setup()
     pFrieshStream = &Serial2;
     #endif
 
-    frieshFrieshDecoder.setFrieshHandler(&frieshHandler);
     frieshFrieshDecoder.setOutputStream(pFrieshStream);
-    frieshCRSFDecoder.setTelemetryListener(&telemetryHandler);
-    frieshSPortDecoder.setTelemetryListener(&telemetryHandler);
+    frieshCRSFDecoder.setTelemetryListener(&telemetry);
+    frieshSPortDecoder.setTelemetryListener(&telemetry);
  
     frieshDataHandler.addDecoder(&frieshFrieshDecoder);
     frieshDataHandler.addDecoder(&serialCRSFDecoder);
@@ -593,54 +569,6 @@ void loop()
 
 }
 
-// Settings Stuff
-void resetSettings()
-{
-    memset(&g_settings, 0, sizeof(g_settings));
-    g_settings.magic = SETTINGS_MAGIC;
-    g_settings.version = SETTINGS_VERSION;
-    storeSettings();
-}
-
-bool storeSettings()
-{
-    EEPROM.put<settings_t>(0, g_settings);
-    bool res=EEPROM.commit();
-    Serial.println(">>> settings stored");
-    return res;
-}
-
-bool loadSettings()
-{
-    uint32_t magic;
-    EEPROM.get<uint32_t>(0, magic);
-    if (magic == SETTINGS_MAGIC)
-    {
-        // We got some settings stored in EEPROM
-        uint32_t version;
-        EEPROM.get<uint32_t>(4, version);
-        if (version == SETTINGS_VERSION)
-        {
-            // Just read settings
-            EEPROM.get<settings_t>(0, g_settings);
-            Serial.println(">>> settings restored");            
-            return true;
-        }
-        else
-        {
-            // Need to convert stored settings to our version
-            // For now just reset settings to our version's default.
-        }
-    }
-    resetSettings();
-
-    return false;
-}
-
-bool isHomed() 
-{
-    return !(g_settings.homeLattitude==0 && g_settings.homeLongitude==0);
-}
 
 void StartupState::enter()
 {
@@ -673,7 +601,7 @@ State *StartupState::run()
     {
         if (_long_press)
         {
-            resetSettings();
+            Settings.reset();
         }
         if (_pressed)
             return &idleState;
@@ -702,6 +630,9 @@ State *IdleState::run()
 }
 
 
+GeoPt getHome() { return Settings.getHome(); }
+GeoPt getTarget() { return Settings.getTrackerMode()==MODE_TRACK?telemetry.getGPS():Settings.getCalib(); }
+
 
 void TrackingState::enter()
 {
@@ -709,14 +640,16 @@ void TrackingState::enter()
     _lastProcessTime = 0;
     display.clear();
     display.setCursor(0, 0);
-    float d = g_home.distanceTo(g_target);
+    GeoPt home = getHome();
+    GeoPt target = getTarget();
+    float d = home.distanceTo(target);
     if (d < 20)
     {
         display.print("T: ---.-\xF8 --.--km");
     }
     else
     {
-        display.printf("T:% 3.1f\xF8 %2.2fkm", g_home.azimuthTo(g_target), d);
+        display.printf("T:% 3.1f\xF8 %2.2fkm", home.azimuthTo(target), d);
     }
     display.setCursor(0, 1);
     display.printf("A:% 3.1f\xF8", getAzimuth());
@@ -739,18 +672,10 @@ State *TrackingState::run()
         return this;
 
     _lastProcessTime = now;
-    GeoPt current_target;
-    if (g_trackerMode == AIMING)
-    {
-        current_target = GeoPt(g_settings.aimLattitude, g_settings.aimLongitude, g_settings.aimElevation);
-    } else
-    {
-       current_target = g_target;
-    }
+    GeoPt home = getHome();
+    GeoPt target = getTarget();
     
-    
-    
-    float target_d = g_home.distanceTo(current_target);
+    float target_d = home.distanceTo(target);
     float current_a = getAzimuth();
 
     if (target_d < 20)
@@ -765,13 +690,13 @@ State *TrackingState::run()
             lastDisplayTime = now;
             display.clear();
             display.setCursor(0, 0);
-            if (g_trackerMode == AIMING)
-        {
-            display.print("aT: ---.-\xF8 --.--km");
-        } else
-        {
-            display.print("T: ---.-\xF8 --.--km");
-        }
+            if (Settings.getTrackerMode() == MODE_CALIB)
+            {
+                display.print("cT: ---.-\xF8 --.--km");
+            } else
+            {
+                display.print("T: ---.-\xF8 --.--km");
+            }
             
             display.setCursor(0, 1);
             display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
@@ -780,7 +705,7 @@ State *TrackingState::run()
         return this;
     }
 
-    float target_a = g_home.azimuthTo(current_target);
+    float target_a = home.azimuthTo(target);
     while (target_a < 0)
         target_a += 360;
     while (target_a >= 360)
@@ -790,7 +715,7 @@ State *TrackingState::run()
     float speed = ErrorSmoother.get() * 2.2;
     // float speed = error * 2.2;
 
-    float tilt = g_home.tiltTo(current_target);
+    float tilt = home.tiltTo(target);
     if (tilt < 0)
         tilt = 0;
 
@@ -799,9 +724,9 @@ State *TrackingState::run()
 
         display.clear();
         display.setCursor(0, 0);
-        if (g_trackerMode == AIMING)
+        if (Settings.getTrackerMode() == MODE_CALIB)
         {
-            display.printf("aT: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+            display.printf("cT: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
         } else
         {
             display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
@@ -827,8 +752,9 @@ State *TrackingState::run()
                 tilt = SERVO_MIN;
             if (tilt > SERVO_MAX)
                 tilt = SERVO_MAX;
-
-            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * tilt));
+                
+            // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
+            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
         }
 
         lastPidTime = now;
@@ -837,7 +763,7 @@ State *TrackingState::run()
     if (now - lastDebugTime > 1000)
     {
         lastDebugTime = now;
-        Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  tilt: %.1f\n", target_d, target_a, current_a, error, tilt);
+        Serial.printf("target_d=%2.2fkm  target_a=%.1f°  current_a=%.1f° error=%.1f  tilt: %.1f\n", target_d* 0.001, target_a, current_a, error, tilt);
     }
 
     return this;
@@ -856,15 +782,10 @@ bool wire_ping(uint8_t addr)
     return Wire.endTransmission() == 0;
 }
 
-//float getAzimuth() {
-//    compass.read();
-//    return compass.getAzimuth();
-//}
-
 float getAzimuth()
 {
     RotaryEncoder.read();
-    return RotaryEncoder.getAngleDegrees();
+    return RotaryEncoder.getAngleDegrees()+Settings.getPanOffset();
 }
 
 float getHeadingError(float current_heading, float target_heading)
@@ -889,110 +810,104 @@ float getHeadingError(float current_heading, float target_heading)
 
 // TELEMETRY HANDLING
 
-float g_GAlt;
-uint32_t tlm_dbg_idx = 0;
-void TelemetryHandler::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
+uint32_t dbg_tlm_cnt = 0;
+void TelemetryManager::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     _fix = true;
-    _gps = GeoPt(latitude, longitude, _altitude);
-
-    g_gpsFix = _fix;
-    g_target =  _gps;
-
-    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, _altitude);
+    _gps = GeoPt(latitude, longitude, Settings.getAltitudeMode()==ALT_GPS?_galt:_altitude);
+    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", dbg_tlm_cnt, _gps.getLatitude(), _gps.getLongitude(), _gps.getElevation());
 }
-void TelemetryHandler::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
+void TelemetryManager::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
     _fix = gpsFix;
     _satellites = satellites;
 
-    g_gpsFix = gpsFix;
-    g_gpsSatellites = satellites;
     //    Serial.printf("GPSState   : %d, %d\n", satellites, gpsFix);
 }
-void TelemetryHandler::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
+void TelemetryManager::onGPSAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
     _galt = altitude;
     //    g_GAlt = altitude;
     //    Serial.printf("GAlt       : %.2fm\n", altitude);
 }
-void TelemetryHandler::onGSpeedData(TelemetryDecoder *decoder, float speed)
+void TelemetryManager::onGSpeedData(TelemetryDecoder *decoder, float speed)
 {
     _speed = speed;
     //    Serial.printf("GSpeed     : %.2fm/s\n", speed);
 }
 
-void TelemetryHandler::onFrameDecoded(TelemetryDecoder* decoder, uint32_t id) {
+void TelemetryManager::onFrameDecoded(TelemetryDecoder* decoder, uint32_t id) {
 //    Serial.printf("[%s] - %d\n", decoder->getName().c_str(), id);
     ++_decodedFrames;
+    ++dbg_tlm_cnt;
 }
 
-void TelemetryHandler::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
+void TelemetryManager::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)
 {
     ++_decodingErrors;
 //    Serial.printf("[%s] Frame error: %d - 0x%X\n", decoder->getName().c_str(), error, param);
 }
-void TelemetryHandler::onFuelData(TelemetryDecoder *decoder, int fuel)
+void TelemetryManager::onFuelData(TelemetryDecoder *decoder, int fuel)
 {
     _fuel = fuel;
     // Serial.printf("Fuel       : %d\n", fuel);
 }
-void TelemetryHandler::onVBATData(TelemetryDecoder *decoder, float voltage)
+void TelemetryManager::onVBATData(TelemetryDecoder *decoder, float voltage)
 {
     _vbat = voltage;
     // Serial.printf("VBat       : %.2fV\n", voltage);
 }
-void TelemetryHandler::onCellVoltageData(TelemetryDecoder *decoder, float voltage)
+void TelemetryManager::onCellVoltageData(TelemetryDecoder *decoder, float voltage)
 {
     _vcell = voltage;
     // Serial.printf("Cell       : %.2fV\n", voltage);
 }
-void TelemetryHandler::onCurrentData(TelemetryDecoder *decoder, float current)
+void TelemetryManager::onCurrentData(TelemetryDecoder *decoder, float current)
 {
     _current = current;
     // Serial.printf("Current    : %.2fA\n", current);
 }
-void TelemetryHandler::onHeadingData(TelemetryDecoder *decoder, float heading)
+void TelemetryManager::onHeadingData(TelemetryDecoder *decoder, float heading)
 {
     _heading = heading;
     // Serial.printf("Heading    : %.2f\xF8\n", heading);
 }
-void TelemetryHandler::onRSSIData(TelemetryDecoder *decoder, int rssi)
+void TelemetryManager::onRSSIData(TelemetryDecoder *decoder, int rssi)
 {
     _rssi = rssi;
     // Serial.printf("Rssi       : %ddB\n", rssi);
 }
-void TelemetryHandler::onRxBtData(TelemetryDecoder *decoder, float voltage)
+void TelemetryManager::onRxBtData(TelemetryDecoder *decoder, float voltage)
 {
     _rxbt = voltage;
     // Serial.printf("RxBt       : %.2fV\n", voltage);
 }
-void TelemetryHandler::onVSpeedData(TelemetryDecoder *decoder, float vspeed)
+void TelemetryManager::onVSpeedData(TelemetryDecoder *decoder, float vspeed)
 {
     _vspeed= vspeed;
     // Serial.printf("VSpeed     : %.2fm/s\n", vspeed);
 }
-void TelemetryHandler::onAltitudeData(TelemetryDecoder *decoder, float altitude)
+void TelemetryManager::onAltitudeData(TelemetryDecoder *decoder, float altitude)
 {
     _altitude = altitude;
     // Serial.printf("Altitude   : %.2fm\n", altitude);
 }
-void TelemetryHandler::onDistanceData(TelemetryDecoder *decoder, int distance)
+void TelemetryManager::onDistanceData(TelemetryDecoder *decoder, int distance)
 {
     _distance = distance;
     // Serial.printf("Distance   : %.2dm\n", distance);
 }
-void TelemetryHandler::onRollData(TelemetryDecoder *decoder, float rollAngle)
+void TelemetryManager::onRollData(TelemetryDecoder *decoder, float rollAngle)
 {
     _roll = rollAngle;
     // Serial.printf("Roll       : %.2f\xF8\n", rollAngle);
 }
-void TelemetryHandler::onPitchData(TelemetryDecoder *decoder, float pitchAngle)
+void TelemetryManager::onPitchData(TelemetryDecoder *decoder, float pitchAngle)
 {
     _pitch = pitchAngle;
     // Serial.printf("Pitch      : %.2f\xF8\n", pitchAngle);
 }
-void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
+void TelemetryManager::onAirSpeedData(TelemetryDecoder *decoder, float speed)
 {
     _airspeed = speed;
     // Serial.printf("AirSpeed   : %.2fm/s\n", speed);
@@ -1000,89 +915,6 @@ void TelemetryHandler::onAirSpeedData(TelemetryDecoder *decoder, float speed)
 
 // FRIESH PROTOCOL
 
-void  MyFrieshHandler::setHome(float lat, float lon, float elv) 
-{
-    g_settings.homeLattitude = lat;
-    g_settings.homeLongitude = lon;
-    g_settings.homeElevation = elv;
-    g_home= GeoPt(lat,lon,elv);
-}
-float MyFrieshHandler::getHomeLatitude() 
-{
-    return g_settings.homeLattitude;
-}
-float MyFrieshHandler::getHomeLongitude() 
-{
-    return g_settings.homeLongitude;
-}
-float MyFrieshHandler::getHomeElevation() 
-{
-    return g_settings.homeElevation;
-}
-
-void  MyFrieshHandler::setAim(float lat, float lon, float elv) 
-{
-    g_settings.aimLattitude = lat;
-    g_settings.aimLongitude = lon;
-    g_settings.aimElevation = elv;
-    g_aim= GeoPt(lat,lon,elv);
-}
-float MyFrieshHandler::getAimLatitude() 
-{
-    return g_settings.aimLattitude;
-}
-float MyFrieshHandler::getAimLongitude() 
-{
-    return g_settings.aimLongitude;
-}
-float MyFrieshHandler::getAimElevation() 
-{
-    return g_settings.aimElevation;
-}
-
-void MyFrieshHandler::setTracking(bool tracking) 
-{
-  g_trackerMode= tracking?TRACKING:AIMING;  
-}
-bool MyFrieshHandler::isTracking() 
-{
-    return g_trackerMode!=AIMING;
-}
-
-void MyFrieshHandler::setPanOffset(int pan) 
-{
-    g_settings.panOffset= pan;
-}
-void MyFrieshHandler::adjPanOffset(int16_t delta) 
-{
-    g_settings.panOffset+= delta;
-}
-int  MyFrieshHandler::getPanOffset() 
-{
-    return g_settings.panOffset;
-}
-
-void MyFrieshHandler::setTiltOffset(int tilt) 
-{
-    g_settings.tiltOffset= tilt;
-}
-void MyFrieshHandler::adjTiltOffset(int16_t delta) 
-{
-    g_settings.tiltOffset+=delta;
-}
-int  MyFrieshHandler::getTiltOffset() 
-{
-   return g_settings.tiltOffset; 
-}
-
-bool MyFrieshHandler::storeSettings() 
-{
-    return ::storeSettings();
-}
-bool MyFrieshHandler::loadSettings() 
-{
-    return ::loadSettings();
-}
 
 //-----------------------------------------------------------------------------------------
 // BLE DataHandler stuff
