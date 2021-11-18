@@ -3,6 +3,7 @@
 
 #include <GeoUtils.h>
 #include <stdint.h>
+#include <string.h>
 
 #define SETTINGS_VERSION        200u
 #define SETTINGS_MAX_NAME_LEN   15u
@@ -48,15 +49,19 @@ public:
 
     // Persistante settings
     inline void  setHome(float lat, float lon, float elv) { _settings.homeLatitude = lat; _settings.homeLongitude = lon; _settings.homeElevation = elv; }
-    inline void setHome(GeoPt& home) { _settings.homeLatitude = home.getLatitude(); _settings.homeLongitude = home.getLongitude(); _settings.homeElevation = home.getElevation(); }
+    inline void  setHome(GeoPt& home) { _settings.homeLatitude = home.getLatitude(); _settings.homeLongitude = home.getLongitude(); _settings.homeElevation = home.getElevation(); }
+    inline void  setHomeName(const char* name) { strncpy(_settings.homeName, name, SETTINGS_MAX_NAME_LEN); _settings.homeName[SETTINGS_MAX_NAME_LEN] = '\0'; }
     inline GeoPt getHome() { return GeoPt(_settings.homeLatitude, _settings.homeLongitude, _settings.homeElevation); };
+    inline const char* getHomeName() { return _settings.homeName; }
     inline float getHomeLatitude() { return _settings.homeLatitude; }
     inline float getHomeLongitude() { return _settings.homeLongitude; }
     inline float getHomeElevation() { return _settings.homeElevation; }
 
     inline void  setCalib(float lat, float lon, float elv) { _settings.calibLatitude = lat; _settings.calibLongitude = lon; _settings.calibElevation = elv; }
     inline void  setCalib(GeoPt& calib) { _settings.calibLatitude = calib.getLatitude(); _settings.calibLongitude = calib.getLongitude(); _settings.calibElevation = calib.getElevation(); }
+    inline void  setCalibName(const char* name) { strncpy(_settings.calibName, name, SETTINGS_MAX_NAME_LEN); _settings.calibName[SETTINGS_MAX_NAME_LEN] = '\0'; }
     inline GeoPt getCalib() { return GeoPt(_settings.calibLatitude, _settings.calibLongitude, _settings.calibElevation); };
+    inline const char* getCalibName() { return _settings.calibName; }
     inline float getCalibLatitude() { return _settings.calibLatitude; }
     inline float getCalibLongitude() { return _settings.calibLongitude; }
     inline float getCalibElevation() { return _settings.calibElevation; }

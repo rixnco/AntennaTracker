@@ -752,8 +752,9 @@ State *TrackingState::run()
                 tilt = SERVO_MIN;
             if (tilt > SERVO_MAX)
                 tilt = SERVO_MAX;
-
-            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * tilt));
+                
+            // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
+            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
         }
 
         lastPidTime = now;
@@ -781,15 +782,10 @@ bool wire_ping(uint8_t addr)
     return Wire.endTransmission() == 0;
 }
 
-//float getAzimuth() {
-//    compass.read();
-//    return compass.getAzimuth();
-//}
-
 float getAzimuth()
 {
     RotaryEncoder.read();
-    return RotaryEncoder.getAngleDegrees();
+    return RotaryEncoder.getAngleDegrees()+Settings.getPanOffset();
 }
 
 float getHeadingError(float current_heading, float target_heading)
@@ -814,12 +810,12 @@ float getHeadingError(float current_heading, float target_heading)
 
 // TELEMETRY HANDLING
 
-uint32_t tlm_dbg_idx = 0;
+uint32_t dbg_tlm_cnt = 0;
 void TelemetryManager::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     _fix = true;
-    _gps = GeoPt(latitude, longitude, Settings.getAltitudeMode()==ALT_BARO?_altitude:_galt);
-    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", tlm_dbg_idx++, latitude, longitude, _altitude);
+    _gps = GeoPt(latitude, longitude, Settings.getAltitudeMode()==ALT_GPS?_galt:_altitude);
+    Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", dbg_tlm_cnt, _gps.getLatitude(), _gps.getLongitude(), _gps.getElevation());
 }
 void TelemetryManager::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
 {
@@ -843,6 +839,7 @@ void TelemetryManager::onGSpeedData(TelemetryDecoder *decoder, float speed)
 void TelemetryManager::onFrameDecoded(TelemetryDecoder* decoder, uint32_t id) {
 //    Serial.printf("[%s] - %d\n", decoder->getName().c_str(), id);
     ++_decodedFrames;
+    ++dbg_tlm_cnt;
 }
 
 void TelemetryManager::onFrameError(TelemetryDecoder *decoder, TelemetryError error, uint32_t param)

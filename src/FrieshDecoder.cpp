@@ -1,6 +1,5 @@
 #include "FrieshDecoder.h"
 
-
 #define FRIESH_SETTING_REQ '$'
 #define FRIESH_TELEMETRY_REQ '!'
 
@@ -25,33 +24,36 @@ static const char *SETTING_NAME[] = {
     "MODE"
 };
 
-// Telemetry parameters ID
-enum telemetry_id_t {
-    TELEM_GPS,
-    TELEM_FIX,
-    TELEM_SATELLITES,
-    TELEM_ALTITUDE,
-    TELEM_RXBT,
-    TELEM_LAST
-};
-
-static const char *TELEM_NAME[] = {
-    "GPS",
-    "FIX",
-    "SATELLITES",
-    "ALTITUDE",
-    "RXBT"
-};
-
-static const char *TRACKER_MODE_NAME[] = {
+static const char *TRACKER_MODE_STR[] = {
     "TRACK",
     "CALIB"
 };
 
-static const char *ALTITUDE_MODE_NAME[] = {
+static const char *ALTITUDE_MODE_STR[] = {
     "GPS",
     "BARO"
 };
+
+// Telemetry parameters ID
+enum telemetry_id_t {
+    TELEMETRY_GPS,
+    TELEMETRY_FIX,
+    TELEMETRY_SATELLITES,
+    TELEMETRY_ALTITUDE,
+    TELEMETRY_VBAT,
+    TELEMETRY_RXBT,
+    TELEMETRY_LAST
+};
+
+static const char *TELEMETRY_STR[] = {
+    "GPS",
+    "FIX",
+    "SATELLITES",
+    "ALTITUDE",
+    "VBAT",
+    "RXBT"
+};
+
 
 
 
@@ -242,7 +244,6 @@ bool FrieshDecoder::decodeSettingRequest()
     return false;
 }
 
-
 void FrieshDecoder::sendSetting(int p)
 {
     if (p < 0 || p >= SETTING_LAST || _settings == nullptr || _out == nullptr)
@@ -250,10 +251,10 @@ void FrieshDecoder::sendSetting(int p)
     switch (p)
     {
     case SETTING_HOME:
-        _out->printf("$%s=%.5f %.5f %.1f\n", SETTING_NAME[p], _settings->getHomeLatitude(), _settings->getHomeLongitude(), _settings->getHomeElevation());
+        _out->printf("$%s=%.5f %.5f %.1f %s\n", SETTING_NAME[p], _settings->getHomeLatitude(), _settings->getHomeLongitude(), _settings->getHomeElevation(), _settings->getHomeName());
         break;
     case SETTING_CALIB:
-        _out->printf("$%s=%.5f %.5f %.1f\n", SETTING_NAME[p], _settings->getCalibLatitude(), _settings->getCalibLongitude(), _settings->getCalibElevation());
+        _out->printf("$%s=%.5f %.5f %.1f %s\n", SETTING_NAME[p], _settings->getCalibLatitude(), _settings->getCalibLongitude(), _settings->getCalibElevation(), _settings->getCalibName());
         break;
     case SETTING_PAN:
         _out->printf("$%s=%d\n", SETTING_NAME[p], _settings->getPanOffset());
@@ -262,16 +263,16 @@ void FrieshDecoder::sendSetting(int p)
         _out->printf("$%s=%d\n", SETTING_NAME[p], _settings->getTiltOffset());
         break;
     case SETTING_ALT:
-        _out->printf("$%s=%s\n", SETTING_NAME[p], ALTITUDE_MODE_NAME[_settings->getAltitudeMode()]);
+        _out->printf("$%s=%s\n", SETTING_NAME[p], ALTITUDE_MODE_STR[_settings->getAltitudeMode()]);
         break;
     case SETTING_MODE:
-        _out->printf("$%s=%s\n", SETTING_NAME[p], TRACKER_MODE_NAME[_settings->getTrackerMode()]);
+        _out->printf("$%s=%s\n", SETTING_NAME[p], TRACKER_MODE_STR[_settings->getTrackerMode()]);
         break;
     default:
         _out->println("$UNKNOWN");
     }
 }
-
+#include <Arduino.h>
 void FrieshDecoder::sendSettings()
 {
     for (int t = 0; t < SETTING_LAST; ++t)
@@ -280,6 +281,8 @@ void FrieshDecoder::sendSettings()
     }
 }
 
+
+static char tmpBuffer[SETTINGS_MAX_NAME_LEN+1];
 
 bool FrieshDecoder::setSetting(int p, char *ptr)
 {
@@ -291,23 +294,58 @@ bool FrieshDecoder::setSetting(int p, char *ptr)
     case SETTING_HOME:
     {
         float lat, lon, elv;
-        lat = strtod(ptr, &ptr);
-        lon = strtod(ptr, &ptr);
-        elv = strtod(ptr, &ptr);
-        if (*ptr != 0)
-            return false;
+        char* start;
+        // parse latitude
+        start= ptr;
+        lat = strtod(start, &ptr);
+        if(start==ptr || *ptr!=' ') return false;
+
+        // parse longitude
+        start = ptr;
+        lon = -100000;
+        lon = strtod(start, &ptr);
+        if(start==ptr || (*ptr!='\0' && *ptr!=' ')) return false;
+
+        // parse elevation (optional)
+        start = ptr;
+        elv = -100000;
+        elv = strtod(start, &ptr);
+        if(start==ptr) elv =0;
+        if(*ptr!='\0' && *ptr!=' ') return false;
+
+        // trim withespaces
+        while(isblank(*ptr)) ++ptr;
+
         _settings->setHome(lat, lon, elv);
+        _settings->setHomeName(ptr);
         break;
     }
     case SETTING_CALIB:
     {
         float lat, lon, elv;
-        lat = strtod(ptr, &ptr);
-        lon = strtod(ptr, &ptr);
-        elv = strtod(ptr, &ptr);
-        if (*ptr != 0)
-            return false;
+        char* start;
+        // parse latitude
+        start= ptr;
+        lat = strtod(start, &ptr);
+        if(start==ptr || *ptr!=' ') return false;
+
+        // parse longitude
+        start = ptr;
+        lon = -100000;
+        lon = strtod(start, &ptr);
+        if(start==ptr || (*ptr!='\0' && *ptr!=' ')) return false;
+
+        // parse elevation (optional)
+        start = ptr;
+        elv = -100000;
+        elv = strtod(start, &ptr);
+        if(start==ptr) elv =0;
+        if(*ptr!='\0' && *ptr!=' ') return false;
+
+        // trim withespaces
+        while(isblank(*ptr)) ++ptr;
         _settings->setCalib(lat, lon, elv);
+        _settings->setCalibName(ptr);
         break;
     }
     case SETTING_PAN:
@@ -409,27 +447,30 @@ bool FrieshDecoder::decodeTelemetryRequest()
 
 void FrieshDecoder::sendTelemetry(int p)
 {
-    if (p < 0 || p >= TELEM_LAST || _telemetry == nullptr || _out == nullptr)
+    if (p < 0 || p >= TELEMETRY_LAST || _telemetry == nullptr || _out == nullptr)
         return;
     switch (p)
     {
-    case TELEM_GPS:
+    case TELEMETRY_GPS:
     {
         GeoPt gps = _telemetry->getGPS();
-        _out->printf("!%s=%.5f %.5f %.1f\n", TELEM_NAME[p], gps.getLatitude(), gps.getLongitude(), gps.getElevation());
+        _out->printf("!%s=%.5f %.5f %.1f\n", TELEMETRY_STR[p], gps.getLatitude(), gps.getLongitude(), gps.getElevation());
         break;
     }
-    case TELEM_FIX:
-        _out->printf("!%s=%d\n", TELEM_NAME[p], _telemetry->hasFix());
+    case TELEMETRY_FIX:
+        _out->printf("!%s=%d\n", TELEMETRY_STR[p], _telemetry->hasFix());
         break;
-    case TELEM_SATELLITES:
-        _out->printf("!%s=%d\n", TELEM_NAME[p], _telemetry->getSatellites());
+    case TELEMETRY_SATELLITES:
+        _out->printf("!%s=%d\n", TELEMETRY_STR[p], _telemetry->getSatellites());
         break;
-    case TELEM_ALTITUDE:
-        _out->printf("!%s=%.1f\n", TELEM_NAME[p], _telemetry->getAltitude());
+    case TELEMETRY_ALTITUDE:
+        _out->printf("!%s=%.1f\n", TELEMETRY_STR[p], _telemetry->getAltitude());
         break;
-    case TELEM_RXBT:
-        _out->printf("!%s=%.1f\n", TELEM_NAME[p], _telemetry->getRxBt());
+    case TELEMETRY_VBAT:
+        _out->printf("!%s=%.1f\n", TELEMETRY_STR[p], _telemetry->getVBat());
+        break;
+    case TELEMETRY_RXBT:
+        _out->printf("!%s=%.1f\n", TELEMETRY_STR[p], _telemetry->getRxBt());
         break;
     default:
         _out->println("!UNKNOWN");
@@ -438,7 +479,7 @@ void FrieshDecoder::sendTelemetry(int p)
 
 void FrieshDecoder::sendTelemetries()
 {
-    for (int t = 0; t < TELEM_LAST; ++t)
+    for (int t = 0; t < TELEMETRY_LAST; ++t)
     {
         sendTelemetry(static_cast<telemetry_id_t>(t));
     }
@@ -505,7 +546,7 @@ trackerMode_t getTrackerMode(const char *str, char **endptr)
     r = MODE_NONE;
     for (t = 0; t < MODE_NONE; ++t)
     {
-        if (strncmp(TRACKER_MODE_NAME[t], str, l) == 0)
+        if (strncmp(TRACKER_MODE_STR[t], str, l) == 0)
         {
             if (r != MODE_NONE)
             {
@@ -541,7 +582,7 @@ altitudeMode_t getAltitudeMode(const char *str, char **endptr)
     r = ALT_NONE;
     for (t = 0; t < ALT_NONE; ++t)
     {
-        if (strncmp(ALTITUDE_MODE_NAME[t], str, l) == 0)
+        if (strncmp(ALTITUDE_MODE_STR[t], str, l) == 0)
         {
             if (r != ALT_NONE)
             {
@@ -576,14 +617,14 @@ int getTelemetryID(const char *str, char **endptr)
     {
         *endptr = (char *)str + l;
     }
-    r = TELEM_LAST;
-    for (t = 0; t < TELEM_LAST; ++t)
+    r = TELEMETRY_LAST;
+    for (t = 0; t < TELEMETRY_LAST; ++t)
     {
-        if (strncmp(TELEM_NAME[t], str, l) == 0)
+        if (strncmp(TELEMETRY_STR[t], str, l) == 0)
         {
-            if (r != TELEM_LAST)
+            if (r != TELEMETRY_LAST)
             {
-                r = TELEM_LAST;
+                r = TELEMETRY_LAST;
                 break;
             }
             else
@@ -592,7 +633,7 @@ int getTelemetryID(const char *str, char **endptr)
             }
         }
     }
-    if (r == TELEM_LAST)
+    if (r == TELEMETRY_LAST)
         return -1;
     return r;
 }
