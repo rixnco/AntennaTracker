@@ -14,7 +14,7 @@
 #define STEPPER_ENA_PIN         14
 
 #define SERVO_ZERO_OFFSET       90
-#define SERVO_DIRECTION         1       // or -1
+#define SERVO_DIRECTION         -1       // or -1
 #define SERVO_MIN               -30
 #define SERVO_MAX               90
 

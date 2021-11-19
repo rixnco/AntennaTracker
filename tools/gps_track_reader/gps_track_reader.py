@@ -14,7 +14,7 @@ tokill = False
 
 def main(argv):
     # ser = serial.Serial('/dev/tty.-DevB', 115200, timeout=2)
-    ser = serial.Serial('COM3', 115200, timeout=2)
+    ser = serial.Serial('COM12', 115200, timeout=2)
     # ser.open()
     # ser.flushInput()
     speed_factor = 1.
