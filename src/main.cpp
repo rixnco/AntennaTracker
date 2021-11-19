@@ -18,7 +18,6 @@
 #include "Settings.h"
 #include "BLEFrieshStream.h"
 #include "AS5600.h"
-
 //--------------------------------------
 //              CONFIG
 //--------------------------------------
@@ -747,15 +746,14 @@ State *TrackingState::run()
             float dir = speed >= 0 ? DIR_CCW : DIR_CW;
             speed = fabs(speed);
             stepper.move(speed, dir);
-
-            if (tilt < SERVO_MIN)
-                tilt = SERVO_MIN;
-            if (tilt > SERVO_MAX)
-                tilt = SERVO_MAX;
-                
-            // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
-            tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
         }
+
+        if (tilt < SERVO_MIN)
+            tilt = SERVO_MIN;
+        if (tilt > SERVO_MAX)
+            tilt = SERVO_MAX;
+        // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
+        tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
 
         lastPidTime = now;
     }
@@ -785,7 +783,7 @@ bool wire_ping(uint8_t addr)
 float getAzimuth()
 {
     RotaryEncoder.read();
-    return RotaryEncoder.getAngleDegrees()+Settings.getPanOffset();
+    return fmod(RotaryEncoder.getAngleDegrees()+Settings.getPanOffset(), 360);
 }
 
 float getHeadingError(float current_heading, float target_heading)
