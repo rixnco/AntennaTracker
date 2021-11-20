@@ -5,10 +5,6 @@
 
 #include <cmath>
 
-#define EARTH_RADIUS_KM 6371
-
-#define TO_RADF(x) (((float)(M_PI))*((float)(x))/180.f)
-#define TO_DEGF(x) (180.f*((float)(x))/((float)(M_PI)))
 
 
 GeoPt::GeoPt() : _lat(0.f), _lon(0.f), _elev(0.f) {
