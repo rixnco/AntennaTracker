@@ -5,6 +5,12 @@
 #ifndef __GEOUTILS_H__
 #define __GEOUTILS_H__
 
+#define EARTH_RADIUS_KM 6371
+
+#define TO_RADF(x) (((float)(M_PI))*((float)(x))/180.f)
+#define TO_DEGF(x) (180.f*((float)(x))/((float)(M_PI)))
+
+
 class GeoPt {
 public:
     GeoPt();

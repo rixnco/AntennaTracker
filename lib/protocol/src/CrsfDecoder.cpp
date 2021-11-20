@@ -114,7 +114,7 @@ bool CRSFDecoder::decodeFrame() {
             if (getCrossfireTelemetryValue(lat, &_buffer[1], 4) &&
                 getCrossfireTelemetryValue(lon, &_buffer[5], 4)) {
                 hasFix = true;
-                fireGPSData(lat/10.f, lon/10.f);
+                fireGPSData(lat/10000000.f, lon/10000000.f);
             }
             int32_t speed;
             if (getCrossfireTelemetryValue(speed, &_buffer[9], 2)) {
@@ -126,7 +126,7 @@ bool CRSFDecoder::decodeFrame() {
             }
             int32_t alt;
             if (getCrossfireTelemetryValue(alt, &_buffer[13], 2)) {
-                fireGPSAltitudeData(alt-1000);
+                fireAltitudeData(alt-1000);
             }
             int32_t satellites;
             if (getCrossfireTelemetryValue(satellites, &_buffer[15], 1)) {

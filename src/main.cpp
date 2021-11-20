@@ -286,8 +286,9 @@ State *_lastState = nullptr;
 //            Prototypes
 //--------------------------------------
 
-float getAzimuth();
-float getHeadingError(float current_heading, float target_heading);
+static float getTilt(float distance, float elevation);
+static float getAzimuth();
+static float getHeadingError(float current_heading, float target_heading);
 
 
 bool wire_ping(uint8_t addr);
@@ -714,7 +715,7 @@ State *TrackingState::run()
     float speed = ErrorSmoother.get() * 2.2;
     // float speed = error * 2.2;
 
-    float tilt = home.tiltTo(target);
+    float tilt = getTilt(target_d, target.getElevation());
     if (tilt < 0)
         tilt = 0;
 
@@ -780,13 +781,21 @@ bool wire_ping(uint8_t addr)
     return Wire.endTransmission() == 0;
 }
 
-float getAzimuth()
+static float getTilt(float distance, float elevation)
+{
+    elevation = Settings.getAltitudeMode()==ALT_BARO?elevation:elevation-Settings.getHomeElevation();
+    float tilt = atan2(elevation, distance);
+    return TO_DEGF(tilt);    
+
+}
+
+static float getAzimuth()
 {
     RotaryEncoder.read();
     return fmod(RotaryEncoder.getAngleDegrees()+Settings.getPanOffset(), 360);
 }
 
-float getHeadingError(float current_heading, float target_heading)
+static float getHeadingError(float current_heading, float target_heading)
 {
     float errorDeg;
     float rawError = target_heading - current_heading;
@@ -812,7 +821,7 @@ uint32_t dbg_tlm_cnt = 0;
 void TelemetryManager::onGPSData(TelemetryDecoder *decoder, float latitude, float longitude)
 {
     _fix = true;
-    _gps = GeoPt(latitude, longitude, Settings.getAltitudeMode()==ALT_GPS?_galt:_altitude);
+    _gps = GeoPt(latitude, longitude, _altitude); // estimated altitude (could be gps or baro)
     Serial.printf("[%04d] GPS        : %.4f, %.4f, %.1f\n", dbg_tlm_cnt, _gps.getLatitude(), _gps.getLongitude(), _gps.getElevation());
 }
 void TelemetryManager::onGPSStateData(TelemetryDecoder *decoder, int satellites, bool gpsFix)
