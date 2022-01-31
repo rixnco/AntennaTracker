@@ -677,7 +677,12 @@ State *TrackingState::run()
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
     static uint64_t lastADCTime = 0;
+    static uint8_t  screenMode = 0;
     uint64_t now = millis();
+    if (isButtonPressed())
+    {
+        screenMode = !screenMode;
+    }
 
     if (now - _lastProcessTime < 100)
         return this;
@@ -688,6 +693,15 @@ State *TrackingState::run()
     
     float target_d = home.distanceTo(target);
     float current_a = getAzimuth();
+    static float batt_volts = 0;
+
+    if (now - lastADCTime > 5000)
+    {
+        int batt_raw = analogRead(ADC_BATT_PIN);
+        batt_volts = batt_raw / 205.;
+        lastADCTime = now;
+    }
+    
 
     if (target_d < 20)
     {
@@ -701,16 +715,29 @@ State *TrackingState::run()
             lastDisplayTime = now;
             display.clear();
             display.setCursor(0, 0);
-            if (Settings.getTrackerMode() == MODE_CALIB)
+            if (screenMode == 0)
             {
-                display.print("cT: ---.-\xF8 --.--km");
+                if (Settings.getTrackerMode() == MODE_CALIB)
+                {
+                    display.print("cT: ---.-\xF8 --.--km");
+                } else
+                {
+                    display.print("T: ---.-\xF8 --.--km");
+                }
+                display.setCursor(0, 1);
+                display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
             } else
             {
-                display.print("T: ---.-\xF8 --.--km");
+                display.setCursor(0, 0);
+                display.printf("Batt:% 3.1f V", batt_volts);
+                bool c = frskyConnection.isConnected();
+                if (c)
+                {
+                    display.setCursor(0, 1);
+                    display.printf("Connected to radio");
+                }
+                
             }
-            
-            display.setCursor(0, 1);
-            display.printf("A:% 3.1f\xF8 --.-\xF8", current_a);
             display.show();
         }
         return this;
@@ -734,15 +761,28 @@ State *TrackingState::run()
     {
         display.clear();
         display.setCursor(0, 0);
-        if (Settings.getTrackerMode() == MODE_CALIB)
+        if (screenMode == 0)
         {
-            display.printf("cT: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+            if (Settings.getTrackerMode() == MODE_CALIB)
+            {
+                display.printf("cT: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+            } else
+            {
+                display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+            }
+            display.setCursor(0, 1);
+            display.printf("A: %3.1f\xF8 %2.1f\xF8", current_a, tilt);
         } else
         {
-            display.printf("T: %3.1f\xF8 %2.2fkm", target_a, target_d * 0.001);
+            display.setCursor(0, 0);
+            display.printf("Batt:% 3.1fV", batt_volts);
+            bool c = frskyConnection.isConnected();
+            if (c)
+            {
+                display.setCursor(0, 1);
+                display.printf("Connected to radio");
+            }     
         }
-        display.setCursor(0, 1);
-        display.printf("A: %3.1f\xF8 %2.1f\xF8", current_a, tilt);
         display.show();
 
         lastDisplayTime = now;
