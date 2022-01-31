@@ -18,6 +18,7 @@
 #include "Settings.h"
 #include "BLEFrieshStream.h"
 #include "AS5600.h"
+#include "PID_v1.h"
 //--------------------------------------
 //              CONFIG
 //--------------------------------------
@@ -344,6 +345,10 @@ DisplayProxy display;
 
 Smoothed<float> ErrorSmoother;
 
+double panPidSetpoint, panPidInput, panPidOutput;
+double Kp=2., Ki=0., Kd=0.;
+PID PanPID = PID(&panPidInput, &panPidOutput, &panPidSetpoint, Kp, Ki, Kd, DIRECT);
+
 AS5600 RotaryEncoder = AS5600();
 
 uint16_t g_startup_profile[] = {
@@ -493,6 +498,12 @@ void setup()
     // display.printf("%3d\xF8", getAzimuth());
     display.show();
 
+    // Initialize panPID
+    panPidSetpoint = 0;
+    panPidInput = 0;
+    PanPID.SetOutputLimits(-22.0, 22.0);
+    PanPID.SetSampleTime(100);
+    PanPID.SetMode(AUTOMATIC);
 
     // Start advertising
     #ifdef FRIESH_SERVER_ENABLED
@@ -665,7 +676,6 @@ State *TrackingState::run()
 
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
-    static uint64_t lastPidTime = 0;
     uint64_t now = millis();
 
     if (now - _lastProcessTime < 100)
@@ -712,8 +722,8 @@ State *TrackingState::run()
         target_a -= 360;
     float error = getHeadingError(current_a, target_a);
     ErrorSmoother.add(error);
-    float speed = ErrorSmoother.get() * 2.2;
-    // float speed = error * 2.2;
+    panPidInput = (double)ErrorSmoother.get();
+    PanPID.Compute();
 
     float tilt = getTilt(target_d, target.getElevation());
     if (tilt < 0)
@@ -721,7 +731,6 @@ State *TrackingState::run()
 
     if (now - lastDisplayTime >= 200)
     {
-
         display.clear();
         display.setCursor(0, 0);
         if (Settings.getTrackerMode() == MODE_CALIB)
@@ -737,27 +746,27 @@ State *TrackingState::run()
 
         lastDisplayTime = now;
     }
-
-    if (now - lastPidTime > 100)
+    // Serial.println("error : " + String(error));
+    if (fabsf(error) < 0.05)
     {
-        if (fabsf(error) < 0.05)
-        {
-            stepper.stop();
-        } else {
-            float dir = speed >= 0 ? DIR_CCW : DIR_CW;
-            speed = fabs(speed);
-            stepper.move(speed, dir);
+        stepper.stop();
+    } else {
+        float speed = (float)panPidOutput;
+        float dir = speed >= 0 ? DIR_CCW : DIR_CW;
+        float speed_abs = fabs(speed);
+        if(speed_abs <0.4){
+            speed_abs = 0.4;
         }
-
-        if (tilt < SERVO_MIN)
-            tilt = SERVO_MIN;
-        if (tilt > SERVO_MAX)
-            tilt = SERVO_MAX;
-        // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
-        tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
-
-        lastPidTime = now;
+        // Serial.println("speed abs : " + String(speed_abs));
+        stepper.move(speed_abs, dir);
     }
+
+    if (tilt < SERVO_MIN)
+        tilt = SERVO_MIN;
+    if (tilt > SERVO_MAX)
+        tilt = SERVO_MAX;
+    // TODO Do we adjust the tilt angle like that, or do we do something smarter ???!!!
+    tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * (tilt+Settings.getTiltOffset())));
 
     if (now - lastDebugTime > 1000)
     {
