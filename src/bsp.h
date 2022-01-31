@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #ifdef SAMBI
+
+#define ADC_BATT_PIN            35
 #define BTN_PIN                 4
 #define LED1_PIN                2
 
@@ -20,6 +22,7 @@
 
 #else
 
+#define ADC_BATT_PIN            35
 #define BTN_PIN                 23
 #define LED1_PIN                2
 

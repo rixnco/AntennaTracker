@@ -676,6 +676,7 @@ State *TrackingState::run()
 
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
+    static uint64_t lastADCTime = 0;
     uint64_t now = millis();
 
     if (now - _lastProcessTime < 100)
