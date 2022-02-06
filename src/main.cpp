@@ -698,7 +698,7 @@ State *TrackingState::run()
     if (now - lastADCTime > 5000)
     {
         int batt_raw = analogRead(ADC_BATT_PIN);
-        batt_volts = batt_raw / 205.;
+        batt_volts = (float)batt_raw / Settings.getAdcBattFactor();
         lastADCTime = now;
     }
     

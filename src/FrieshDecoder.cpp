@@ -1,5 +1,4 @@
 #include "FrieshDecoder.h"
-#include <Arduino.h>
 
 #define FRIESH_SETTING_REQ '$'
 #define FRIESH_TELEMETRY_REQ '!'
@@ -249,7 +248,6 @@ bool FrieshDecoder::decodeSettingRequest()
 
 void FrieshDecoder::sendSetting(int p)
 {
-    Serial.println("P " + String(p));
     if (p < 0 || p >= SETTING_LAST || _settings == nullptr || _out == nullptr)
         return;
     switch (p)
@@ -273,7 +271,7 @@ void FrieshDecoder::sendSetting(int p)
         _out->printf("$%s=%s\n", SETTING_NAME[p], TRACKER_MODE_STR[_settings->getTrackerMode()]);
         break;
     case SETTING_ADC_FACTOR:
-        _out->printf("$%s=%s\n", SETTING_NAME[p], _settings->getAdcBattFactor());
+        _out->printf("$%s=%s\n", SETTING_NAME[p], String(_settings->getAdcBattFactor()));
         break;
     default:
         _out->println("$UNKNOWN");
