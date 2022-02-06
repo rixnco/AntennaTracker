@@ -10,7 +10,7 @@
 
 enum trackerMode_t { MODE_TRACK, MODE_CALIB, MODE_NONE };
 
-enum altitudeMode_t { ALT_GPS, ALT_BARO, ALT_NONE };
+enum altitudeMode_t { ALT_ABSOLUTE, ALT_RELATIVE, ALT_NONE };
 
 
 

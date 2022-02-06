@@ -182,7 +182,7 @@ public:
 /**
  * Scan for BLE servers and find the first one that advertises the service we are looking for.
  */
-class BLEFrskyConnection : public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks, protected BLEClient
+class BLEFrskyConnection : public BLEAdvertisedDeviceCallbacks, BLEClientCallbacks
 {
 public:
     BLEFrskyConnection();
@@ -196,6 +196,7 @@ public:
 
     inline bool isConnected() { return _connected; }
 protected:
+    BLEClient  *_pClient;
     uint64_t   _address;
     bool       _connected;
 }; // BLEFrskyClient
@@ -240,24 +241,6 @@ private:
     bool _long_press;
 };
 
-class IdleState : public State
-{
-public:
-    virtual void enter() override;
-    virtual State *run() override;
-
-private:
-};
-
-class ConfigurationState : public State
-{
-public:
-    virtual void enter() override;
-    virtual State *run() override;
-
-private:
-};
-
 class TrackingState : public State
 {
 public:
@@ -269,13 +252,11 @@ private:
     uint64_t _lastProcessTime;
 };
 
-StartupState startupState;
-IdleState idleState;
-ConfigurationState configurationState;
-TrackingState trackingState;
+StartupState    startupState;
+TrackingState   trackingState;
 
-State *_state = &startupState;
-State *_lastState = nullptr;
+State           *_state = &startupState;
+State           *_lastState = nullptr;
 
 
 //--------------------------------------
@@ -306,13 +287,9 @@ bool                    g_frieshClientConnected = false;
 Stream                  *pFrieshStream;
 
 
-
 BLEFrskyConnection      frskyConnection;
 bool                    g_frskyConnected = false;
 BLERemoteFrskyStream    *pFrskyStream;
-
-
-
 
 
 TelemetryManager        telemetry;
@@ -349,12 +326,6 @@ AS5600 RotaryEncoder = AS5600();
 uint16_t g_startup_profile[] = {
     LED_ON | 100,
     LED_OFF | 1400};
-
-uint16_t g_connection_profile[] = {
-    LED_ON | 100,
-    LED_OFF | 100,
-    LED_ON | 100,
-    LED_OFF | 1200};
 
 uint16_t g_fix_profile[] = {
     LED_ON | 100,
@@ -555,8 +526,7 @@ void loop()
     if (_state == nullptr)
     {
         Serial.println("State machine terminated !!!");
-        while (true)
-            ;
+        while (true) {};
     }
     if (_state != _lastState)
     {
@@ -604,7 +574,7 @@ State *StartupState::run()
             Settings.reset();
         }
         if (_pressed)
-            return &idleState;
+            return &trackingState;
         return this;
     }
     _pressed = true;
@@ -615,18 +585,6 @@ State *StartupState::run()
     }
 
     return this;
-}
-
-void IdleState::enter()
-{
-    // AUTO Calibration
-    Serial.println("IdleState::enter");
-    ledState(LED_OFF);
-}
-State *IdleState::run()
-{
-
-    return &trackingState;
 }
 
 
@@ -659,10 +617,6 @@ void TrackingState::enter()
 
 State *TrackingState::run()
 {
-
-
-    //    if(!g_gpsFix) return this;
-
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
     static uint64_t lastPidTime = 0;
@@ -783,7 +737,7 @@ bool wire_ping(uint8_t addr)
 
 static float getTilt(float distance, float elevation)
 {
-    elevation = Settings.getAltitudeMode()==ALT_BARO?elevation:elevation-Settings.getHomeElevation();
+    elevation = Settings.getAltitudeMode()==ALT_RELATIVE?elevation:elevation-Settings.getHomeElevation();
     float tilt = atan2(elevation, distance);
     return TO_DEGF(tilt);    
 
@@ -943,7 +897,8 @@ void BLEDataHandler::onLinkDisconnected(DataLink *link)
 /// BLE Frsky Client callbacks
 BLEFrskyConnection::BLEFrskyConnection() : _connected(false)
 {
-    setClientCallbacks(this);
+    _pClient = BLEDevice::createClient();
+    _pClient->setClientCallbacks(this);
 }
 
 void BLEFrskyConnection::onResult(BLEAdvertisedDevice advertisedDevice)
@@ -979,9 +934,9 @@ void BLEFrskyConnection::process()
                       (uint8_t)(_address >> 8),
                       (uint8_t)(_address));
         
-        if(connect(BLEAddress((uint8_t*)&_address)))
+        if(_pClient->connect(BLEAddress((uint8_t*)&_address)))
         {
-            _connected = pFrskyStream->setFrskyService(this->getService(FRSKY_STREAM_SERVICE_UUID));
+            _connected = pFrskyStream->setFrskyService(_pClient->getService(FRSKY_STREAM_SERVICE_UUID));
         }
         if(_connected) {
             Serial.println("BLEFrskyStream connected ...OK");
@@ -1021,9 +976,11 @@ BLEFrieshConnection::BLEFrieshConnection() : _connected(false)
 
 void BLEFrieshConnection::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param)
 {
+    if(param->connect.link_role==0) return;
+
     uint64_t addr =  (*(uint64_t*)param->connect.remote_bda) & 0x0000FFFFFFFFFFFF;
     _connected = true;
-    Serial.printf("FrieshClient connected: %012X\n", addr);
+    Serial.printf("FrieshClient connected: %012lX\n", addr);
 };
 
 void BLEFrieshConnection::onDisconnect(BLEServer *pServer)

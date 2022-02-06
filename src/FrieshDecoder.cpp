@@ -30,8 +30,8 @@ static const char *TRACKER_MODE_STR[] = {
 };
 
 static const char *ALTITUDE_MODE_STR[] = {
-    "GPS",
-    "BARO"
+    "ABSOLUTE",
+    "RELATIVE"
 };
 
 // Telemetry parameters ID
