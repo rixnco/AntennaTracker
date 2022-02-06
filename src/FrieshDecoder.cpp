@@ -1,4 +1,5 @@
 #include "FrieshDecoder.h"
+#include <Arduino.h>
 
 #define FRIESH_SETTING_REQ '$'
 #define FRIESH_TELEMETRY_REQ '!'
@@ -12,6 +13,7 @@ enum setting_id_t {
     SETTING_TILT,
     SETTING_ALT,
     SETTING_MODE,
+    SETTING_ADC_FACTOR,
     SETTING_LAST
 };
 
@@ -21,7 +23,8 @@ static const char *SETTING_NAME[] = {
     "PAN",
     "TILT",
     "ALTITUDE",
-    "MODE"
+    "MODE",
+    "ADCFACTOR"
 };
 
 static const char *TRACKER_MODE_STR[] = {
@@ -246,6 +249,7 @@ bool FrieshDecoder::decodeSettingRequest()
 
 void FrieshDecoder::sendSetting(int p)
 {
+    Serial.println("P " + String(p));
     if (p < 0 || p >= SETTING_LAST || _settings == nullptr || _out == nullptr)
         return;
     switch (p)
@@ -267,6 +271,9 @@ void FrieshDecoder::sendSetting(int p)
         break;
     case SETTING_MODE:
         _out->printf("$%s=%s\n", SETTING_NAME[p], TRACKER_MODE_STR[_settings->getTrackerMode()]);
+        break;
+    case SETTING_ADC_FACTOR:
+        _out->printf("$%s=%s\n", SETTING_NAME[p], _settings->getAdcBattFactor());
         break;
     default:
         _out->println("$UNKNOWN");
@@ -376,6 +383,14 @@ bool FrieshDecoder::setSetting(int p, char *ptr)
         trackerMode_t mode = getTrackerMode(ptr, &ptr);
         if(mode==MODE_NONE) return false;
         _settings->setTrackerMode(mode);
+        break;
+    }
+    case SETTING_ADC_FACTOR:
+    {
+        float val = strtof(ptr, &ptr);
+        if (*ptr != 0)
+            return false;
+        _settings->setAdcBattFactor(val);
         break;
     }
     default:

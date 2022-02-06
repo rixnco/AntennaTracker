@@ -34,6 +34,8 @@ private:
     int32_t pan;
     int32_t tilt;
 
+    float adcBattFactor;
+
     altitudeMode_t altitudeMode;
   } __attribute__((packed)) settings_t;
 
@@ -76,6 +78,9 @@ public:
     inline void setTiltOffset(int tilt) { _settings.tilt = tilt; }
     inline void adjTiltOffset(int16_t delta) { _settings.tilt+=delta; }
     inline int  getTiltOffset() { return _settings.tilt; }
+
+    inline void setAdcBattFactor(float factor) { _settings.adcBattFactor = factor; }
+    inline float getAdcBattFactor() { return _settings.adcBattFactor; }
 
     inline altitudeMode_t getAltitudeMode() { return _settings.altitudeMode; }
     inline void setAltitudeMode(altitudeMode_t mode) { _settings.altitudeMode = mode; }
