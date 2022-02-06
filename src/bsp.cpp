@@ -37,7 +37,7 @@ bool isButtonPressed() {
     portENTER_CRITICAL(&_btnMux);
     res = _btn_state && (millis()-_btn_state_time>BTN_DEBOUNCE_MS);
     portEXIT_CRITICAL(&_btnMux);
-     return res; 
+    return res; 
 }
 
 uint64_t getButtonPressTime() 

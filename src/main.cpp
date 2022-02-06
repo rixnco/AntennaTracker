@@ -677,13 +677,16 @@ State *TrackingState::run()
     static uint64_t lastDebugTime = 0;
     static uint64_t lastDisplayTime = 0;
     static uint64_t lastADCTime = 0;
+    static uint64_t lastButtonTime = 0;
     static uint8_t  screenMode = 0;
     uint64_t now = millis();
-    if (isButtonPressed())
+
+    if (isButtonPressed() && now - lastButtonTime > 500)
     {
         screenMode = !screenMode;
+        lastButtonTime = now;
     }
-
+    
     if (now - _lastProcessTime < 100)
         return this;
 
