@@ -845,7 +845,12 @@ static float getTilt(float distance, float elevation)
 static float getAzimuth()
 {
     RotaryEncoder.read();
-    return fmod(RotaryEncoder.getAngleDegrees()+Settings.getPanOffset(), 360);
+    float azimuth = RotaryEncoder.getAngleDegrees()+Settings.getPanOffset();
+    while (azimuth < 0)
+    {
+        azimuth += 360.;
+    }
+    return fmod(azimuth, 360);
 }
 
 static float getHeadingError(float current_heading, float target_heading)
