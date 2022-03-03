@@ -1008,6 +1008,10 @@ void BLEFrskyConnection::onResult(BLEAdvertisedDevice advertisedDevice)
 {
     if(_connected || _address!=0) return;
 
+    BLEAddress addr = advertisedDevice.getAddress();
+    uint64_t address = *(uint64_t *)(addr.getNative()) & 0x0000FFFFFFFFFFFF;
+
+    if(Settings.isFrskyAddressSet() && (address != Settings.getFrskAddress())) return;
 
     // We have found a device, let us now see if it contains the service we are looking for.
     if (advertisedDevice.isAdvertisingService(FRSKY_STREAM_SERVICE_UUID))
@@ -1015,11 +1019,10 @@ void BLEFrskyConnection::onResult(BLEAdvertisedDevice advertisedDevice)
 
         BLEDevice::getScan()->stop();
 
-        Serial.print("BLEFrsky Device: ");
+        Serial.print("BLEFrsky Device ");
         Serial.println(advertisedDevice.toString().c_str());
-
-        BLEAddress addr = advertisedDevice.getAddress();
-        _address = *(uint64_t *)(addr.getNative()) & 0x0000FFFFFFFFFFFF;
+        
+        _address = address;
 
     }
 }
@@ -1030,12 +1033,12 @@ void BLEFrskyConnection::process()
     {
         // Do connect
         Serial.printf("connecting to %02X:%02X:%02X:%02X:%02X:%02X\n",
-                      (uint8_t)(_address >> 40),
-                      (uint8_t)(_address >> 32),
-                      (uint8_t)(_address >> 24),
+                      (uint8_t)(_address >>  0),
+                      (uint8_t)(_address >>  8),
                       (uint8_t)(_address >> 16),
-                      (uint8_t)(_address >> 8),
-                      (uint8_t)(_address));
+                      (uint8_t)(_address >> 24),
+                      (uint8_t)(_address >> 32),
+                      (uint8_t)(_address >> 40));
         
         if(connect(BLEAddress((uint8_t*)&_address)))
         {

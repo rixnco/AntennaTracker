@@ -13,6 +13,7 @@ enum setting_id_t {
     SETTING_ALT,
     SETTING_MODE,
     SETTING_ADC_FACTOR,
+    SETTING_FRSKY_ADDR,
     SETTING_LAST
 };
 
@@ -23,7 +24,8 @@ static const char *SETTING_NAME[] = {
     "TILT",
     "ALTITUDE",
     "MODE",
-    "ADCFACTOR"
+    "ADCFACTOR",
+    "FRSKYADDR"
 };
 
 static const char *TRACKER_MODE_STR[] = {
@@ -271,8 +273,20 @@ void FrieshDecoder::sendSetting(int p)
         _out->printf("$%s=%s\n", SETTING_NAME[p], TRACKER_MODE_STR[_settings->getTrackerMode()]);
         break;
     case SETTING_ADC_FACTOR:
-        _out->printf("$%s=%s\n", SETTING_NAME[p], String(_settings->getAdcBattFactor()));
+        _out->printf("$%s=%.2f\n", SETTING_NAME[p], _settings->getAdcBattFactor());
         break;
+    case SETTING_FRSKY_ADDR:
+    {
+        uint64_t addr = _settings->getFrskAddress();
+        _out->printf("$%s=%02X:%02X:%02X:%02X:%02X:%02X\n", SETTING_NAME[p], 
+            (uint8_t)((addr>> 0)&0xFF),
+            (uint8_t)((addr>> 8)&0xFF),
+            (uint8_t)((addr>>16)&0xFF),
+            (uint8_t)((addr>>24)&0xFF),
+            (uint8_t)((addr>>32)&0xFF),
+            (uint8_t)((addr>>40)&0xFF) );
+        break;
+    }
     default:
         _out->println("$UNKNOWN");
     }
@@ -391,6 +405,23 @@ bool FrieshDecoder::setSetting(int p, char *ptr)
         _settings->setAdcBattFactor(val);
         break;
     }
+    case SETTING_FRSKY_ADDR:
+    {
+        uint64_t addr=0;
+        --ptr;
+        for(int t=0; t<6; ++t) 
+        {
+            if (t && (*ptr != ':')) return false;
+            ++ptr;
+            uint64_t val = strtol(ptr, &ptr, 16)&0xFF;
+            addr= (addr>>8) | (val<<40);
+        }
+        if (*ptr != 0) return false;
+
+        _settings->setFrskyAddress(addr);
+        break;
+    }
+
     default:
         return false;
     }

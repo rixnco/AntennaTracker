@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define SETTINGS_VERSION        200u
+#define SETTINGS_VERSION        201u
 #define SETTINGS_MAX_NAME_LEN   15u
 
 enum trackerMode_t { MODE_TRACK, MODE_CALIB, MODE_NONE };
@@ -37,6 +37,8 @@ private:
     float adcBattFactor;
 
     altitudeMode_t altitudeMode;
+
+    uint64_t frskyAddr;
   } __attribute__((packed)) settings_t;
 
   settings_t _settings;
@@ -84,6 +86,10 @@ public:
 
     inline altitudeMode_t getAltitudeMode() { return _settings.altitudeMode; }
     inline void setAltitudeMode(altitudeMode_t mode) { _settings.altitudeMode = mode; }
+
+    inline bool isFrskyAddressSet() { return _settings.frskyAddr != 0; }
+    inline uint64_t getFrskAddress() { return _settings.frskyAddr; }
+    inline void setFrskyAddress(uint64_t addr) { _settings.frskyAddr = addr; }
 
 
     bool store();
