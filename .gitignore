@@ -1,3 +1,5 @@
 .pio
 .vscode
 /tools/gps_track_reader/.idea
+/.vscode
+/*.code-workspace
