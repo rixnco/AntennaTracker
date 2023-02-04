@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <limits>
+#include <ESP32Servo.h>
 
 class ServoStepper;
 
@@ -17,28 +18,22 @@ public:
     
     bool attach(uint8_t pwmPin);
     void detach();
-    void move(float speed, float angle=DIR_CW);
+    void move(float speed, float direction);
+    void move(float speed);
     bool isMoving();
-    void stop();
-
-protected:
-    void onStep();
-
-    static void onStepISR(void*);
+    void stop();  
 
 private:
     enum State { IDLE, MOVING, STOPPING };
 
+    Servo                _servo;
     State                _state;
     volatile float       _speed;
+    int                  _stop_us;
     volatile uint32_t    _lastFreq;
 
     uint8_t     _pwmPin;
-    uint8_t     _dirPin;
-    uint8_t     _enablePin;
-    uint32_t    _stepPerRev;
     float       _maxSpeed;
-    bool        _reverseDir;
 };
 
 #endif

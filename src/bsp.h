@@ -10,6 +10,8 @@
 #define BTN_PIN                 4
 #define LED1_PIN                2
 
+// Servo as Stepper
+#define SERVO_STEPPER_PIN       33
 #define SERVO_PIN               25
 #define STEPPER_DIR_PIN         27
 #define STEPPER_STEP_PIN        26

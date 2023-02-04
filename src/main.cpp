@@ -5,7 +5,8 @@
 #include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
 #include <CRSFDecoder.h>
-#include <ESP32Stepper.h>
+// #include <ESP32Stepper.h>
+#include <ServoStepper.h>
 #include <GeoUtils.h>
 #include <FrieshDecoder.h>
 
@@ -336,7 +337,7 @@ DataHandler             frieshDataHandler(3);
 StreamLink              frieshLink;
 
 
-ESP32Stepper stepper;
+ServoStepper stepper;
 Servo tiltServo;
 
 LCD_Display lcd(0x27);
@@ -442,13 +443,14 @@ void setup()
     Serial.println("...OK");
 
     Serial.print("Configuring stepper...");
-    if (!stepper.attach(STEPPER_STEP_PIN, STEPPER_DIR_PIN, STEPPER_ENA_PIN, STEPPER_STEP_PER_REV, 22))
+    if (!stepper.attach(SERVO_STEPPER_PIN))
     {
         Serial.println("...FAIL");
         while (true)
             ;
     }
     Serial.println("...OK");
+    stepper.stop();
 
     Serial.print("Configuring servo...");
     if (!tiltServo.attach(SERVO_PIN))
