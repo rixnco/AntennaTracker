@@ -348,6 +348,7 @@ Smoothed<float> ErrorSmoother;
 
 double panPidSetpoint, panPidInput, panPidOutput;
 double Kp=2., Ki=0., Kd=0.;
+double consKp=0.005, consKi=0.0, consKd=0.;
 PID PanPID = PID(&panPidInput, &panPidOutput, &panPidSetpoint, Kp, Ki, Kd, DIRECT);
 
 AS5600 RotaryEncoder = AS5600();
@@ -503,8 +504,8 @@ void setup()
     // Initialize panPID
     panPidSetpoint = 0;
     panPidInput = 0;
-    PanPID.SetOutputLimits(-22.0, 22.0);
-    PanPID.SetSampleTime(100);
+    PanPID.SetOutputLimits(-500.0, 500.0);
+    PanPID.SetSampleTime(20);
     PanPID.SetMode(AUTOMATIC);
 
     // Start advertising
@@ -689,7 +690,7 @@ State *TrackingState::run()
         lastButtonTime = now;
     }
     
-    if (now - _lastProcessTime < 100)
+    if (now - _lastProcessTime < 20)
         return this;
 
     _lastProcessTime = now;
@@ -754,8 +755,16 @@ State *TrackingState::run()
     while (target_a >= 360)
         target_a -= 360;
     float error = getHeadingError(current_a, target_a);
-    ErrorSmoother.add(error);
-    panPidInput = (double)ErrorSmoother.get();
+    if (fabsf(error) < 2.)
+    {
+        PanPID.SetTunings(consKp, consKi, consKd);
+    } else if(fabsf(error) > 2.1) {
+        PanPID.SetTunings(Kp, Ki, Kd);
+    }
+    
+    // ErrorSmoother.add(error);
+    // panPidInput = (double)ErrorSmoother.get();
+    panPidInput = (double)error;
     PanPID.Compute();
 
     float tilt = getTilt(target_d, target.getElevation());
@@ -792,7 +801,6 @@ State *TrackingState::run()
 
         lastDisplayTime = now;
     }
-    // Serial.println("error : " + String(error));
     if (fabsf(error) < 0.05)
     {
         stepper.stop();
@@ -800,9 +808,7 @@ State *TrackingState::run()
         float speed = (float)panPidOutput;
         float dir = speed >= 0 ? DIR_CCW : DIR_CW;
         float speed_abs = fabs(speed);
-        if(speed_abs <0.4){
-            speed_abs = 0.4;
-        }
+        Serial.print("error : " + String(error) + "\tspeed : " + String(speed) + "\t\t");
         // Serial.println("speed abs : " + String(speed_abs));
         stepper.move(speed_abs, dir);
     }
