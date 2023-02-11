@@ -29,6 +29,8 @@ private:
     Servo                _servo;
     State                _state;
     volatile float       _speed;
+    int                  _stop_us_low;
+    int                  _stop_us_high;
     int                  _stop_us;
     volatile uint32_t    _lastFreq;
 
