@@ -6,8 +6,8 @@ ServoStepper::ServoStepper():
   _speed(0),
   _lastFreq(0),
   _pwmPin(0),
-  _stop_us_low(1490),
-  _stop_us_high(1511),
+  _stop_us_low(1406),
+  _stop_us_high(1539),
   _stop_us((_stop_us_low + _stop_us_high)/2),
   _servo()
   {}
