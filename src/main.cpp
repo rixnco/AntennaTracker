@@ -347,8 +347,8 @@ DisplayProxy display;
 Smoothed<float> ErrorSmoother;
 
 double panPidSetpoint, panPidInput, panPidOutput;
-double Kp=2., Ki=0., Kd=0.;
-double consKp=0.005, consKi=0.0, consKd=0.;
+double Kp=50., Ki=0., Kd=0.;
+double consKp=0.5, consKi=0.6, consKd=0.1;
 PID PanPID = PID(&panPidInput, &panPidOutput, &panPidSetpoint, Kp, Ki, Kd, DIRECT);
 
 AS5600 RotaryEncoder = AS5600();
@@ -755,10 +755,10 @@ State *TrackingState::run()
     while (target_a >= 360)
         target_a -= 360;
     float error = getHeadingError(current_a, target_a);
-    if (fabsf(error) < 2.)
+    if (fabsf(error) < 4.)
     {
         PanPID.SetTunings(consKp, consKi, consKd);
-    } else if(fabsf(error) > 2.1) {
+    } else if(fabsf(error) > 5.1) {
         PanPID.SetTunings(Kp, Ki, Kd);
     }
     
@@ -801,7 +801,7 @@ State *TrackingState::run()
 
         lastDisplayTime = now;
     }
-    if (fabsf(error) < 0.05)
+    if (fabsf(error) < 0.1)
     {
         stepper.stop();
     } else {
