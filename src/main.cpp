@@ -4,14 +4,14 @@
 #include <ESP32Servo.h>
 #include <TelemetryDecoder.h>
 #include <SPortDecoder.h>
-#include <CRSFDecoder.h>
+#include <CrsfDecoder.h>
 // #include <ESP32Stepper.h>
 #include <ServoStepper.h>
 #include <GeoUtils.h>
 #include <FrieshDecoder.h>
 
 #include "bsp.h"
-#include "display.h"
+#include "Display.h"
 #include "DataLink.h"
 #include "BLERemoteFrskyStream.h"
 #include "StreamLink.h"
