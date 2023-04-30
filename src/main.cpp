@@ -808,7 +808,7 @@ State *TrackingState::run()
         float speed = (float)panPidOutput;
         float dir = speed >= 0 ? DIR_CCW : DIR_CW;
         float speed_abs = fabs(speed);
-        Serial.print("error : " + String(error) + "\tspeed : " + String(speed) + "\t\t");
+        // Serial.print("error : " + String(error) + "\tspeed : " + String(speed) + "\t\t");
         // Serial.println("speed abs : " + String(speed_abs));
         stepper.move(speed_abs, dir);
     }

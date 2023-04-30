@@ -36,7 +36,7 @@ void ServoStepper::move(float speed) {
   int offset = 0;
   offset = speed  > 0 ? this->_stop_us_high : this->_stop_us_low;
   this->_servo.writeMicroseconds(offset + speed);
-  Serial.println("servo us : " + String(offset + speed));
+  //Serial.println("servo us : " + String(offset + speed));
 }
 
 void ServoStepper::stop() {
