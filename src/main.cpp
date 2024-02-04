@@ -15,7 +15,6 @@
 #include "DataLink.h"
 #include "BLERemoteFrskyStream.h"
 #include "StreamLink.h"
-#include "Smoothed.h"
 #include "Settings.h"
 #include "BLEFrieshStream.h"
 #include "AS5600.h"
@@ -344,11 +343,10 @@ LCD_Display lcd(0x27);
 OLED_Display oled(0x3c, 5);
 DisplayProxy display;
 
-Smoothed<float> ErrorSmoother;
 
 double panPidSetpoint, panPidInput, panPidOutput;
-double Kp=50., Ki=0., Kd=0.;
-double consKp=0.5, consKi=0.6, consKd=0.1;
+double Kp=10., Ki=0., Kd=0.;
+double consKp=1., consKi=0., consKd=0.;
 PID PanPID = PID(&panPidInput, &panPidOutput, &panPidSetpoint, Kp, Ki, Kd, DIRECT);
 
 AS5600 RotaryEncoder = AS5600();
@@ -391,8 +389,6 @@ void setup()
     {
         Serial.println("Using default settings...");
     }
-
-    ErrorSmoother.begin(SMOOTHED_AVERAGE, 3);
 
     Serial.print("Configuring the telemetry link");
     pFrskyStream = new BLERemoteFrskyStream();
@@ -443,16 +439,7 @@ void setup()
     frieshLink.setStream(pFrieshStream);
     Serial.println("...OK");
 
-    Serial.print("Configuring stepper...");
-    if (!stepper.attach(SERVO_STEPPER_PIN))
-    {
-        Serial.println("...FAIL");
-        while (true)
-            ;
-    }
-    Serial.println("...OK");
-    stepper.stop();
-
+    pinMode(SERVO_PIN, OUTPUT);
     Serial.print("Configuring servo...");
     if (!tiltServo.attach(SERVO_PIN))
     {
@@ -460,9 +447,16 @@ void setup()
         while (true)
             ;
     }
+    Serial.println(tiltServo.attached());
     Serial.println("...OK");
 
     tiltServo.write(SERVO_ZERO_OFFSET + (SERVO_DIRECTION * 0));
+
+    Serial.print("Configuring stepper...");
+    motorPinsInit();
+    stepper.init(SERVO_STEPPER_PWM_PIN, SERVO_STEPPER_DIR_PIN, 30000, 3, 8, 32);
+    Serial.println("...OK");
+    stepper.stop();
 
     // Scan I2C bus
     Wire.begin();
@@ -504,7 +498,7 @@ void setup()
     // Initialize panPID
     panPidSetpoint = 0;
     panPidInput = 0;
-    PanPID.SetOutputLimits(-500.0, 500.0);
+    PanPID.SetOutputLimits(-255.0, 255.0);
     PanPID.SetSampleTime(20);
     PanPID.SetMode(AUTOMATIC);
 
@@ -755,15 +749,13 @@ State *TrackingState::run()
     while (target_a >= 360)
         target_a -= 360;
     float error = getHeadingError(current_a, target_a);
-    if (fabsf(error) < 4.)
+    if (fabsf(error) < .5)
     {
         PanPID.SetTunings(consKp, consKi, consKd);
-    } else if(fabsf(error) > 5.1) {
+    } else if(fabsf(error) > 0.9) {
         PanPID.SetTunings(Kp, Ki, Kd);
     }
     
-    // ErrorSmoother.add(error);
-    // panPidInput = (double)ErrorSmoother.get();
     panPidInput = (double)error;
     PanPID.Compute();
 
@@ -806,11 +798,12 @@ State *TrackingState::run()
         stepper.stop();
     } else {
         float speed = (float)panPidOutput;
-        float dir = speed >= 0 ? DIR_CCW : DIR_CW;
-        float speed_abs = fabs(speed);
+        float dir = 0.;
+        if(speed < 0) dir = 1.;
+        else dir = 0;
         // Serial.print("error : " + String(error) + "\tspeed : " + String(speed) + "\t\t");
-        // Serial.println("speed abs : " + String(speed_abs));
-        stepper.move(speed_abs, dir);
+        // Serial.println("speed abs : " + String(speed));
+        stepper.move(speed, dir);
     }
 
     if (tilt < SERVO_MIN)
