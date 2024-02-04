@@ -66,5 +66,9 @@ void ledBlink(uint16_t* profile, size_t len);
 #define LED_OFF  (0x0000)
 
 
+// Motor Stuff
+void motorPinsInit();
+
+
 
 #endif // __BSP_H__

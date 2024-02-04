@@ -3,38 +3,31 @@
 
 #include <stdint.h>
 #include <limits>
-#include <ESP32Servo.h>
 
-class ServoStepper;
-
-
-#define DIR_CW   (std::numeric_limits<float>::infinity())
-#define DIR_CCW  (-std::numeric_limits<float>::infinity())
 
 class ServoStepper {
 public:
     ServoStepper();
     virtual ~ServoStepper();
     
-    bool attach(uint8_t pwmPin);
-    void detach();
+    void init(int pwm_pin, int dir_pin, unsigned int freq, int channel, int resolution, uint8_t min_speed);
     void move(float speed, float direction);
-    void move(float speed);
     bool isMoving();
-    void stop();  
+    void stop();
 
 private:
     enum State { IDLE, MOVING, STOPPING };
 
-    Servo                _servo;
     State                _state;
+    int                  _channel;
     volatile float       _speed;
-    int                  _stop_us_low;
-    int                  _stop_us_high;
     int                  _stop_us;
     volatile uint32_t    _lastFreq;
+    bool                 _isMoving;
+    uint8_t              _minimum_speed;
 
     uint8_t     _pwmPin;
+    uint8_t     _dirPin;
     float       _maxSpeed;
 };
 

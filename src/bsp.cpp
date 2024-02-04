@@ -99,3 +99,9 @@ void ledBlink(uint16_t* profile, size_t len)
     portEXIT_CRITICAL(&_led_timerMux);    
 }
 
+
+void motorPinsInit() {
+    pinMode(SERVO_STEPPER_PWM_PIN, OUTPUT);
+    pinMode(SERVO_STEPPER_DIR_PIN, OUTPUT);
+    // pinMode(SERVO_PIN, OUTPUT);
+}
