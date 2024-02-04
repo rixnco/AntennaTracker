@@ -11,12 +11,11 @@
 #define LED1_PIN                2
 
 // Servo as Stepper
-#define SERVO_STEPPER_PIN       33
-#define SERVO_PIN               25
-#define STEPPER_DIR_PIN         27
-#define STEPPER_STEP_PIN        26
-#define STEPPER_ENA_PIN         14
+#define SERVO_STEPPER_PWM_PIN   32
+#define SERVO_STEPPER_DIR_PIN   33
 
+// Tilt Servo
+#define SERVO_PIN               27
 #define SERVO_ZERO_OFFSET       90
 #define SERVO_DIRECTION         -1       // or -1
 #define SERVO_MIN               -30
