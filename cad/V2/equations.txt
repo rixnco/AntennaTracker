@@ -1,0 +1,5 @@
+﻿"external_diameter"=100
+"external_bearing_diameter"=22.85
+"internal_bearing_diameter"=17
+"holes_patter_diameter"=90
+"3mm_holes"=2.9
